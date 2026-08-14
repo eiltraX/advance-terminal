@@ -53,7 +53,7 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+      "artifactName": "Advance-Terminal-Setup-${version}-${arch}.${ext}",
       "icon": "build/icon.ico"
     },
     "nsis": {
