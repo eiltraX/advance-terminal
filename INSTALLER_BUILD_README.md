@@ -1,11 +1,11 @@
-# Advance Terminal v6.5.0 — Windows Installer Build Guide
+# Advance Terminal v6.5.1 — Windows Installer Build Guide
 
 Advance Terminal is maintained by **Artlie Digital**.
 
 Website: https://www.artliedigital.com
 Repository: https://github.com/eiltraX/advance-terminal
 
-This document describes how to validate, run, and build the Windows installer for Advance Terminal v6.5.0.
+This document describes how to validate, run, and build the Windows installer for Advance Terminal v6.5.1.
 
 ## Build Output
 
@@ -14,8 +14,8 @@ Advance Terminal uses Electron Builder with an NSIS Windows installer.
 The expected release assets are:
 
 ```text
-dist/Advance-Terminal-Setup-6.5.0-x64.exe
-dist/Advance-Terminal-Setup-6.5.0-x64.exe.blockmap
+dist/Advance-Terminal-Setup-6.5.1-x64.exe
+dist/Advance-Terminal-Setup-6.5.1-x64.exe.blockmap
 dist/latest.yml
 ```
 
@@ -187,8 +187,8 @@ A GitHub token must be provided through the environment when publishing directly
 For Electron auto-update to work correctly, the GitHub release must contain matching artifacts generated from the same build:
 
 ```text
-Advance-Terminal-Setup-6.5.0-x64.exe
-Advance-Terminal-Setup-6.5.0-x64.exe.blockmap
+Advance-Terminal-Setup-6.5.1-x64.exe
+Advance-Terminal-Setup-6.5.1-x64.exe.blockmap
 latest.yml
 ```
 

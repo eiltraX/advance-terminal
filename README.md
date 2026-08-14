@@ -1,4 +1,4 @@
-# Advance Terminal v6.5.0
+# Advance Terminal v6.5.1
 
 **Advance Terminal** is an open-source Windows desktop terminal and SSH workspace maintained by **Artlie Digital**.
 
@@ -9,12 +9,12 @@ Advance Terminal is built with Electron and provides local terminal sessions, SS
 
 ## Current Version
 
-**6.5.0**
+**6.5.1**
 
 The top-right application badge displays the complete installed version, for example:
 
 ```text
-Advance Terminal V6.5.0
+Advance Terminal V6.5.1
 ```
 
 ## Highlights
@@ -252,8 +252,8 @@ dist/
 Release assets normally include:
 
 ```text
-Advance-Terminal-Setup-6.5.0-x64.exe
-Advance-Terminal-Setup-6.5.0-x64.exe.blockmap
+Advance-Terminal-Setup-6.5.1-x64.exe
+Advance-Terminal-Setup-6.5.1-x64.exe.blockmap
 latest.yml
 ```
 
