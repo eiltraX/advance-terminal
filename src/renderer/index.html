@@ -1,0 +1,2119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self' file: blob:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' data: file:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advance Terminal</title>
+  <link rel="icon" type="image/png" href="../../build/icon.png">
+  <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="menu-row" aria-label="Application menu">
+      <div class="menu-left">
+        <button class="menu-item active" data-menu-action="terminal">Terminal</button>
+        <button class="menu-item" data-menu-action="view">View</button>
+        <button class="menu-item" data-menu-action="settings">Settings</button>
+        <button class="menu-item" data-menu-action="report">Report</button>
+        <button class="menu-item" data-menu-action="help">Help</button>
+      </div>
+
+      <div class="mode-pill">
+        <span class="mode-dot"></span>
+        <span id="mode-label">Advance Terminal V6</span>
+      </div>
+    </nav>
+
+    <section class="toolbar" aria-label="Context toolbar">
+      <div class="toolbar-panel active" data-toolbar-panel="terminal">
+        <button class="tool-button quick-menu-button" id="tool-quick-menu" title="New connection, terminal, commands and workspaces" aria-haspopup="menu" aria-expanded="false">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/></svg></span>
+          <span>Quick Menu</span>
+        </button>
+        <div id="quick-actions-menu" class="terminal-profile-quick-menu quick-actions-menu hidden" role="menu" aria-label="Quick terminal actions">
+          <div class="terminal-profile-quick-heading">Quick Menu</div>
+          <button type="button" class="terminal-profile-quick-item quick-actions-item" role="menuitem" data-quick-action="new-connection">
+            <span class="terminal-profile-quick-icon">＋</span>
+            <span class="terminal-profile-quick-main"><strong>New Connection</strong><small>Add a Local or SSH connection.</small></span>
+            <span class="quick-actions-hint">Connection</span>
+          </button>
+          <button type="button" class="terminal-profile-quick-item quick-actions-item" role="menuitem" data-quick-action="new-terminal">
+            <span class="terminal-profile-quick-icon">TERM</span>
+            <span class="terminal-profile-quick-main"><strong>New Terminal</strong><small>Launch a Terminal Profile.</small></span>
+            <span class="quick-actions-hint">Profiles ›</span>
+          </button>
+          <button type="button" class="terminal-profile-quick-item quick-actions-item" role="menuitem" data-quick-action="command-palette">
+            <span class="terminal-profile-quick-icon">⌘</span>
+            <span class="terminal-profile-quick-main"><strong>Command Palette</strong><small>Search commands, connections, tabs and settings.</small></span>
+            <span class="quick-actions-hint">Ctrl+Shift+P</span>
+          </button>
+          <button type="button" class="terminal-profile-quick-item quick-actions-item" role="menuitem" data-quick-action="workspaces">
+            <span class="terminal-profile-quick-icon">WS</span>
+            <span class="terminal-profile-quick-main"><strong>Workspaces</strong><small>Save or restore your terminal workspace.</small></span>
+            <span class="quick-actions-hint">Manage ›</span>
+          </button>
+        </div>
+        <div id="terminal-profile-quick-menu" class="terminal-profile-quick-menu hidden" role="menu" aria-label="Terminal profiles"></div>
+        <div id="workspace-quick-menu" class="terminal-profile-quick-menu workspace-quick-menu hidden" role="menu" aria-label="Workspaces"></div>
+
+        <span class="toolbar-separator"></span>
+
+        <div id="terminal-toolbar-actions" class="dynamic-toolbar-actions" aria-label="Terminal toolbar actions"></div>
+      </div>
+
+      <div class="toolbar-panel" data-toolbar-panel="view">
+        <button class="tool-button" id="tool-toggle-theme" title="Switch between light and dark mode">
+          <span class="tool-icon" id="theme-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.6A8.2 8.2 0 0 1 9.4 3a7 7 0 1 0 11.6 11.6z"/></svg></span>
+          <span id="theme-label">Dark</span>
+        </button>
+
+        <button class="tool-button" id="tool-view-live-console" title="Open or close Activity Feed. Drag the top edge to resize.">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h4M7 13h10M7 17h7"/></svg></span>
+          <span>Activity Feed</span>
+        </button>
+
+        <button class="tool-button" id="tool-view-notification" title="Open View page and preview notification position">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></span>
+          <span>Notification</span>
+        </button>
+      </div>
+
+      <div class="toolbar-panel" data-toolbar-panel="settings">
+        <button class="tool-button" id="tool-save-settings" title="Export a safe backup copy of the app configuration">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg></span>
+          <span>Export Settings</span>
+        </button>
+
+        <button class="tool-button" id="tool-import-settings" title="Import a safe Advance Terminal settings backup">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21h14V9h-4V3H5z"/><path d="M15 3v6h4"/><path d="M12 17V9"/><path d="M8.5 12.5L12 9l3.5 3.5"/></svg></span>
+          <span>Import Settings</span>
+        </button>
+
+        <button class="tool-button" id="tool-repair-settings" title="Repair missing connections from a valid local settings backup">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v6h6"/><path d="M20 19v-6h-6"/><path d="M5.6 15.5A7 7 0 0 0 17.7 18"/><path d="M18.4 8.5A7 7 0 0 0 6.3 6"/></svg></span>
+          <span>Repair Settings</span>
+        </button>
+
+        <button class="tool-button" id="tool-restore-settings" title="View local restore points and restore one safely">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M4 12a8 8 0 0 1 14-5"/><path d="M18 3v4h-4"/></svg></span>
+          <span>Restore Points</span>
+        </button>
+
+        <button class="tool-button" id="tool-settings-workspaces" title="Manage saved terminal workspaces">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg></span>
+          <span>Workspaces</span>
+        </button>
+
+        <span class="toolbar-separator"></span>
+
+        <button class="tool-button" id="tool-settings-terminal-profiles" title="Manage local Terminal Profiles">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/><circle cx="18" cy="7" r="2"/></svg></span>
+          <span>Terminal Profiles</span>
+        </button>
+
+        <button class="tool-button" id="tool-settings-terminal-actions" title="Manage Terminal toolbar actions">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h4M7 14h2"/><path d="M15 9l2 2-2 2"/><path d="M14 15h4"/></svg></span>
+          <span>Terminal Actions</span>
+        </button>
+
+        <button class="tool-button" id="tool-settings-keys" title="Open SSH Keys settings">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="14.5" r="3.5"/><path d="M10 12l10-10"/><path d="M16 6l2 2M14 8l2 2"/></svg></span>
+          <span>SSH Keys</span>
+        </button>
+
+        <button class="tool-button" id="tool-settings-updates" title="Open app update settings">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.6-5.6"/><path d="M18 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6"/><path d="M6 21v-5h5"/></svg></span>
+          <span>Updates</span>
+        </button>
+      </div>
+
+      <div class="toolbar-panel" data-toolbar-panel="report">
+        <button class="tool-button terminal-action-button" id="tool-generate-report" title="Generate a privacy-safe work activity report">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6M9 8h3"/></svg></span>
+          <span>Generate</span>
+        </button>
+
+        <button class="tool-button terminal-action-button" id="tool-generate-ai-report" title="Generate an OpenAI-powered project work report from the active terminal location">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.3 4.1L17 9l-3.7 1.9L12 15l-1.3-4.1L7 9l3.7-1.9z"/><path d="M5 14l.8 2.3L8 17.5l-2.2 1.2L5 21l-.8-2.3L2 17.5l2.2-1.2z"/><path d="M19 13l.8 2.3L22 16.5l-2.2 1.2L19 20l-.8-2.3L16 16.5l2.2-1.2z"/></svg></span>
+          <span>AI Report</span>
+        </button>
+
+        <button class="tool-button" id="tool-copy-last-report" title="Copy the latest generated report">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg></span>
+          <span>Copy Last</span>
+        </button>
+
+        <button class="tool-button" id="tool-save-last-report" title="Save the latest generated report as Markdown">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg></span>
+          <span>Save Last</span>
+        </button>
+
+        <button class="tool-button" id="tool-report-history" title="Open saved report history">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5M8 17h7"/><path d="M6 3v4M18 3v4"/></svg></span>
+          <span>History</span>
+        </button>
+      </div>
+
+      <div class="toolbar-panel help-toolbar-panel" data-toolbar-panel="help">
+        <button class="tool-button active" id="tool-help-about" data-help-toolbar="about" title="About Advance Terminal">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.75 9a2.4 2.4 0 1 1 3.86 1.9c-.95.7-1.61 1.2-1.61 2.1"/><path d="M12 17h.01"/></svg></span>
+          <span>About</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="quick-start" title="Open Quick Start guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/><path d="M5 5v14"/></svg></span>
+          <span>Quick Start</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="features" title="View main features">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.5L20 9l-4.4 3.7L17 19l-5-3.2L7 19l1.4-6.3L4 9l5.8-.5z"/></svg></span>
+          <span>Features</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="connections" title="Connection guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg></span>
+          <span>Connections</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="ssh-keys" title="SSH key guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="14.5" r="3.5"/><path d="M10 12l10-10"/><path d="M16 6l2 2M14 8l2 2"/></svg></span>
+          <span>SSH Keys</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="commands" title="Command guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2"/><path d="M12 15h5"/></svg></span>
+          <span>Commands</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="reports" title="Report guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6M9 8h3"/></svg></span>
+          <span>Reports</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="live-console" title="Activity Feed guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h4M7 13h10M7 17h7"/></svg></span>
+          <span>Activity Feed</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="backup" title="Backup and restore guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg></span>
+          <span>Backup</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="troubleshooting" title="Troubleshooting guide">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 16H3z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span>
+          <span>Troubleshoot</span>
+        </button>
+
+        <button class="tool-button" data-help-toolbar="safety" title="Safety notes">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M9 12l2 2 4-5"/></svg></span>
+          <span>Safety</span>
+        </button>
+      </div>
+
+      <div class="toolbar-global-actions" aria-label="Global shortcuts">
+        <button
+          class="tool-button global-terminal-button active"
+          id="tool-open-terminal"
+          type="button"
+          title="Return to the Terminal workspace"
+          aria-current="page">
+          <span class="tool-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <path d="M7 9l3 3-3 3"/>
+              <path d="M12 15h5"/>
+            </svg>
+          </span>
+          <span>Terminal</span>
+        </button>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <aside id="servers-panel" class="servers-panel">
+        <div class="panel-header">
+          <div class="panel-title-block">
+            <h2>Servers</h2>
+          </div>
+          <div class="panel-header-actions">
+            <button id="connections-panel-toggle" class="panel-collapse-button" type="button" aria-expanded="true" title="Collapse connections panel">‹</button>
+          </div>
+        </div>
+
+        <div class="left-tabbar" aria-label="Left panel tabs">
+          <button class="left-tab active" data-left-tab="connections" type="button">Servers</button>
+          <button class="left-tab" data-left-tab="commands" type="button">Commands</button>
+        </div>
+
+        <div class="collapsed-left-tabbar" aria-label="Collapsed left panel tabs">
+          <button class="collapsed-left-tab active" data-left-tab="connections" type="button" title="Open Connection Server tab">
+            <span>Server</span>
+          </button>
+          <button class="collapsed-left-tab" data-left-tab="commands" type="button" title="Open Commands tab">
+            <span>Commands</span>
+          </button>
+        </div>
+
+        <div id="left-tab-connections" class="left-tab-panel active">
+          <div class="search-row connection-search-row">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="server-search" class="search-input" type="search" placeholder="Search connections..." aria-label="Search connections" autocomplete="off" spellcheck="false">
+          </div>
+
+          <div class="connection-group-filter-row" aria-label="Connection group filter">
+            <select id="connection-group-filter" class="connection-group-filter" aria-label="Connection group">
+              <option value="all">All Groups</option>
+            </select>
+          </div>
+
+          <div class="connection-filter-row" aria-label="Connection type filter">
+            <button class="connection-filter-button active" data-connection-filter="all" type="button">All</button>
+            <button class="connection-filter-button" data-connection-filter="remote" type="button">SSH</button>
+            <button class="connection-filter-button" data-connection-filter="local" type="button">Local</button>
+          </div>
+
+          <div id="server-list" class="server-list"></div>
+
+          <button id="add-manage-button" class="add-manage-button">+ New Connection</button>
+        </div>
+
+        <div id="left-tab-commands" class="left-tab-panel">
+          <div class="search-row command-search-row">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="command-search" class="search-input" type="search" placeholder="Search commands..." autocomplete="off" spellcheck="false">
+          </div>
+
+          <div class="command-category-filter-row">
+            <select id="command-category-filter" class="command-category-filter" aria-label="Filter commands by category" title="Filter commands by category">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+
+          <div id="command-list" class="command-list"></div>
+
+          <button id="add-command-button" class="add-manage-button">+ New Command</button>
+        </div>
+      </aside>
+
+      <section class="content-panel">
+        <div id="terminal-view" class="view active">
+          <div class="content-header terminal-session-header">
+            <div class="terminal-session-summary">
+              <span class="eyebrow terminal-session-label">TERMINAL SESSION</span>
+              <span class="terminal-header-separator" aria-hidden="true">|</span>
+              <div id="terminal-location" class="terminal-location muted" title="No active terminal location">No active terminal location</div>
+            </div>
+            <div class="header-actions">
+              <span class="status-pill" id="terminal-status">Idle</span>
+            </div>
+          </div>
+
+          <div id="terminal-tabs" class="terminal-tabs"></div>
+
+          <div id="terminal-empty" class="terminal-empty">
+            <div class="empty-card">
+              <div class="empty-icon">▸_</div>
+              <h2>Select a server</h2>
+              <p>Choose a local terminal or remote SSH connection from the left panel, then click Connect.</p>
+            </div>
+          </div>
+
+          <div id="terminal-host" class="terminal-host">
+            <div id="terminal-search-bar" class="terminal-search-bar hidden" role="search" aria-label="Search active terminal" aria-hidden="true">
+              <label class="terminal-search-label" for="terminal-search-input">Find</label>
+              <input id="terminal-search-input" class="terminal-search-input" type="search" placeholder="Search terminal..." autocomplete="off" spellcheck="false">
+              <span id="terminal-search-count" class="terminal-search-count" aria-live="polite">0 / 0</span>
+              <button id="terminal-search-previous" class="terminal-search-button" type="button" title="Previous match (Shift+Enter)" aria-label="Previous match">↑</button>
+              <button id="terminal-search-next" class="terminal-search-button" type="button" title="Next match (Enter)" aria-label="Next match">↓</button>
+              <button id="terminal-search-close" class="terminal-search-button terminal-search-close" type="button" title="Close search (Escape)" aria-label="Close terminal search">×</button>
+            </div>
+          </div>
+        </div>
+
+
+        <div id="view-view" class="view">
+          <div class="content-header">
+            <div>
+              <div class="eyebrow">VIEW</div>
+              <h1>View & Layout</h1>
+            </div>
+            <div class="header-actions">
+              <button class="secondary-button" id="view-open-activity-feed" type="button">Activity Feed</button>
+              <button class="secondary-button" id="view-preview-notification" type="button">Preview Notification</button>
+            </div>
+          </div>
+
+          <div class="settings-layout page-layout">
+            <div class="settings-nav page-nav" aria-label="View pages">
+              <button class="page-tab view-tab active" data-view-tab="appearance" type="button">Appearance</button>
+            </div>
+
+            <div class="settings-content page-content">
+
+              <section id="view-tab-appearance" class="view-page-section active">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">VIEW PAGE</div>
+                    <h2>Appearance & Notifications</h2>
+                  </div>
+                </div>
+
+                <div class="windows-group">
+                  <p class="section-help">Choose the application color mode. This setting is saved locally.</p>
+
+                  <div class="form-grid">
+                    <label>
+                      <span>Color Mode</span>
+                      <select id="appearance-theme-select">
+                        <option value="light">Light Mode</option>
+                        <option value="dark">Dark Mode</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="windows-group notification-appearance-group">
+                  <div class="section-title compact">
+                    <div>
+                      <div class="eyebrow">NOTIFICATION APPEARANCE</div>
+                      <h3>Notification Location</h3>
+                    </div>
+                  </div>
+                  <p class="section-help">Choose where toast notifications appear. Use Preview Notification to test the location.</p>
+
+                  <div class="form-grid">
+                    <label>
+                      <span>Notification Position</span>
+                      <select id="notification-position-select">
+                        <option value="top-left">Top Left</option>
+                        <option value="top-center">Top Center</option>
+                        <option value="top-right">Top Right</option>
+                        <option value="bottom-left">Bottom Left</option>
+                        <option value="bottom-center">Bottom Center</option>
+                        <option value="bottom-right">Bottom Right</option>
+                      </select>
+                    </label>
+
+                    <div class="form-inline-action">
+                      <span>Preview</span>
+                      <button id="notification-preview-button" class="secondary-button" type="button">Preview Notification</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+
+        <div id="report-view" class="view">
+          <div class="content-header">
+            <div>
+              <div class="eyebrow">REPORT</div>
+              <h1>Reports & Audit</h1>
+            </div>
+            <div class="header-actions">
+              <button class="secondary-button" id="report-open-history-main" type="button">History</button>
+              <button class="secondary-button" id="report-copy-last-main" type="button">Copy Last</button>
+              <button class="primary-button" id="report-generate-main" type="button">Generate Report</button>
+            </div>
+          </div>
+
+          <div class="settings-layout page-layout">
+            <div class="settings-nav page-nav" aria-label="Report pages">
+              <button class="page-tab report-tab active" data-report-tab="options" type="button">Report Options</button>
+              <button class="page-tab report-tab" data-report-tab="audit" type="button">Audit Log</button>
+            </div>
+
+            <div class="settings-content page-content">
+
+
+<section id="report-tab-options" class="report-page-section active">
+  <div class="section-title">
+    <div>
+      <div class="eyebrow">REPORT PAGE</div>
+      <h2>Reports</h2>
+    </div>
+  </div>
+
+  <div class="windows-group">
+    <p class="section-help">
+      Choose which sections appear in the Work Activity Report. Real Job tracking records privacy-safe command summaries, working folders, elapsed time, and outcomes without storing terminal output or secrets.
+    </p>
+
+    <div class="form-grid activity-feed-output-grid">
+      <label>
+        <span>Terminal output in Activity Feed</span>
+        <select id="activity-feed-terminal-output-select">
+          <option value="off">Off - app events only</option>
+          <option value="errors">Errors only - redacted warning/error output</option>
+          <option value="full">Full output - redacted terminal output</option>
+        </select>
+        <small>Terminal output stays visible in the terminal. Use Full output only when you need it because commands and paths can be sensitive.</small>
+      </label>
+    </div>
+
+    <div class="report-options-grid">
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showSummary">
+        <span>
+          <strong>Work Summary</strong>
+          <small>Show scope, date range, measured work, real-job outcomes, sessions, reconnects, and commands.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showTimeBreakdown">
+        <span>
+          <strong>Time Breakdown</strong>
+          <small>Show terminal uptime, real working time, idle time, and active/idle percentage.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showRealJobs">
+        <span>
+          <strong>Real Job Timeline</strong>
+          <small>Show when work started and ended, terminal, folder, safe command summary, work type, and outcome.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showCommandsAnalyzed">
+        <span>
+          <strong>Commands Analyzed</strong>
+          <small>Show command count and safe command-analysis totals without exposing raw secrets.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showActivityAnalysis">
+        <span>
+          <strong>Work Summary / Activity Analysis</strong>
+          <small>Show detected work categories based on terminal commands and output.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showIssueSummary">
+        <span>
+          <strong>Warnings and Error Assistant</strong>
+          <small>Show warning/error categories and suggested troubleshooting guidance.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showConnectionBreakdown">
+        <span>
+          <strong>Per-Connection Summary</strong>
+          <small>Show uptime, active work, idle time, commands, reconnects, and disconnects by connection.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showSuggestedNextActions">
+        <span>
+          <strong>Suggested Next Actions</strong>
+          <small>Show short next-step suggestions based on detected activity and issues.</small>
+        </span>
+      </label>
+
+      <label class="report-option-row">
+        <input type="checkbox" data-report-option="showMetadata">
+        <span>
+          <strong>Report Metadata</strong>
+          <small>Show generated time, scope, date filter, and analysis totals.</small>
+        </span>
+      </label>
+    </div>
+  </div>
+</section>
+
+
+
+              <section id="report-tab-audit" class="report-page-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">REPORT PAGE</div>
+                    <h2>Audit Log</h2>
+                  </div>
+                </div>
+
+                <div id="audit-list" class="audit-list"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div id="settings-view" class="view">
+          <div class="content-header">
+            <div>
+              <div class="eyebrow">SETTINGS</div>
+              <h1>App Settings</h1>
+            </div>
+            <div class="header-actions">
+              <button class="secondary-button" id="settings-restore-main" title="View local restore points and restore one safely">Restore Points</button>
+              <button class="secondary-button" id="settings-repair-main" title="Repair missing connections from a valid local settings backup">Repair Settings</button>
+              <button class="secondary-button" id="settings-import-main" title="Import a safe Advance Terminal settings backup">Import Settings</button>
+              <button class="primary-button" id="settings-save-main" title="Export a safe backup copy of the app configuration">Export Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-layout">
+            <div class="settings-nav" aria-label="Settings tabs">
+              <button class="settings-tab active" data-settings-tab="safety">Terminal Safety</button>
+              <button class="settings-tab" data-settings-tab="restore">Restore Points</button>
+              <button class="settings-tab" data-settings-tab="workspaces">Workspaces</button>
+              <button class="settings-tab" data-settings-tab="terminal-profiles">Terminal Profiles</button>
+              <button class="settings-tab" data-settings-tab="terminal-actions">Terminal Actions</button>
+              <button class="settings-tab" data-settings-tab="ai">AI</button>
+              <button class="settings-tab" data-settings-tab="keys">SSH Keys</button>
+              <button class="settings-tab" data-settings-tab="updates">Updates</button>
+            </div>
+
+            <div class="settings-content">
+
+              <section id="settings-tab-safety" class="settings-section active">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">PASTE SAFETY</div>
+                    <h2>Terminal Safety</h2>
+                  </div>
+                </div>
+
+                <div class="windows-group">
+                  <p class="section-help">
+                    Protect terminal sessions from accidentally executing pasted multi-line commands. This affects toolbar Paste and terminal right-click paste.
+                  </p>
+
+                  <label class="report-option-row">
+                    <input id="safe-paste-multiline-toggle" type="checkbox">
+                    <span>
+                      <strong>Confirm before multi-line paste</strong>
+                      <small>
+                        When enabled, pasted text that contains line breaks will show a confirmation first.
+                        You can paste it as one line, paste and execute it, or cancel.
+                      </small>
+                    </span>
+                  </label>
+
+                  <label class="report-option-row">
+                    <input id="right-click-auto-enter-toggle" type="checkbox">
+                    <span>
+                      <strong>Right-click paste then Enter</strong>
+                      <small>
+                        When enabled, right-click paste sends Enter after the pasted text if it does not already end with a line break.
+                        Toolbar Paste is not affected.
+                      </small>
+                    </span>
+                  </label>
+
+                  <label class="report-option-row">
+                    <input id="terminal-busy-action-lock-toggle" type="checkbox">
+                    <span>
+                      <strong>Lock command actions while a process is running</strong>
+                      <small>
+                        When enabled, risky command/send actions stay locked while the terminal is busy, but Clear, Copy, Paste, Ctrl+C, and Close Session remain available.
+                        Turn this off to allow command buttons and custom send-text actions while a process is still running. Connection and duplicate-action guards stay protected.
+                      </small>
+                    </span>
+                  </label>
+
+                  <div id="windows-admin-mode-row" class="report-option-row admin-mode-row">
+                    <span class="admin-mode-indicator" id="windows-admin-mode-indicator" aria-hidden="true"></span>
+                    <span class="admin-mode-copy">
+                      <strong>Windows Administrator Mode</strong>
+                      <small id="windows-admin-mode-status">
+                        Checking current Windows privilege level...
+                      </small>
+                    </span>
+                    <button id="restart-as-admin-button" class="secondary-button admin-mode-button" type="button">
+                      Restart as Administrator
+                    </button>
+                  </div>
+
+                  <label class="report-option-row">
+                    <input id="ssh-lock-start-folder-toggle" type="checkbox">
+                    <span>
+                      <strong>Lock SSH terminal to start folder</strong>
+                      <small>
+                        Blocks SSH navigation outside the server start folder and blocks nested SSH/SFTP jumps.
+                        The Location header still follows allowed folder changes inside the same server path.
+                      </small>
+                    </span>
+                  </label>
+
+                  <div class="inline-note">
+                    Right-click auto-enter is disabled by default because it executes one-line clipboard commands immediately.
+                    Keep the running-command lock enabled unless you intentionally want to queue/send commands while another process is active.
+                  </div>
+                </div>
+              </section>
+
+              <section id="settings-tab-restore" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SAFE RESTORE</div>
+                    <h2>Restore Points</h2>
+                  </div>
+                  <button class="secondary-button" id="restore-refresh-button" type="button">Refresh</button>
+                </div>
+
+                <div class="windows-group">
+                  <p class="section-help">
+                    Restore points are valid local settings backups only. The app skips corrupt, empty, unreadable, or non-settings files.
+                    Before restoring, it creates a new backup of your current settings.
+                  </p>
+
+                  <div id="restore-current-summary" class="restore-current-summary">Loading current settings...</div>
+                  <div id="restore-points-list" class="restore-points-list" aria-live="polite"></div>
+                </div>
+              </section>
+
+              <section id="settings-tab-workspaces" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">V6.3 WORKSPACES</div>
+                    <h2>Workspaces</h2>
+                  </div>
+                  <div class="header-actions">
+                    <button class="primary-button" id="workspace-capture-header" type="button">Save Current Workspace</button>
+                  </div>
+                </div>
+
+                <div class="windows-group workspace-settings">
+                  <p class="section-help">
+                    Save the current terminal tabs, split-pane layout and divider sizes, working folders, active pane, toolbar layout, and Windows window placement.
+                    Restoring a workspace reopens saved Local / SSH connections without storing passwords or key passphrases.
+                  </p>
+
+                  <div class="workspace-manager">
+                    <div class="workspace-list-panel">
+                      <div class="command-manager-header">Saved workspaces</div>
+                      <div id="workspace-list" class="workspace-list"></div>
+                      <div class="workspace-list-buttons">
+                        <button class="secondary-button" id="workspace-new" type="button">New Workspace</button>
+                        <button class="secondary-button" id="workspace-duplicate" type="button">Duplicate</button>
+                        <button class="danger-button" id="workspace-delete" type="button">Delete</button>
+                      </div>
+                    </div>
+
+                    <div class="workspace-editor">
+                      <div class="form-grid">
+                        <label class="wide-field">
+                          <span>Workspace Name</span>
+                          <input id="workspace-name" type="text" maxlength="100" placeholder="Example: Laravel Production">
+                        </label>
+
+                        <label class="report-option-row wide-field workspace-option-row">
+                          <input id="workspace-startup" type="checkbox">
+                          <span>
+                            <strong>Open this workspace on startup</strong>
+                            <small>Only one workspace can be selected for automatic startup restore.</small>
+                          </span>
+                        </label>
+
+                        <label class="report-option-row wide-field workspace-option-row">
+                          <input id="workspace-include-toolbar" type="checkbox" checked>
+                          <span>
+                            <strong>Restore saved Terminal toolbar layout</strong>
+                            <small>Captures the current Terminal Actions lineup and reapplies it when this workspace is opened.</small>
+                          </span>
+                        </label>
+
+                        <label class="report-option-row wide-field workspace-option-row">
+                          <input id="workspace-restore-window" type="checkbox" checked>
+                          <span>
+                            <strong>Restore window size and position</strong>
+                            <small>Reuses the saved Windows placement while safely keeping the window on an available display.</small>
+                          </span>
+                        </label>
+                      </div>
+
+                      <div id="workspace-summary" class="workspace-summary" aria-live="polite">
+                        Select a workspace or create a new one.
+                      </div>
+
+                      <div class="workspace-session-block">
+                        <div class="command-manager-header">Saved terminal tabs / panes</div>
+                        <div id="workspace-session-list" class="workspace-session-list"></div>
+                      </div>
+
+                      <div class="form-actions workspace-editor-actions">
+                        <button class="secondary-button" id="workspace-save-details" type="button">Save Details</button>
+                        <button class="primary-button" id="workspace-capture" type="button">Capture Current State</button>
+                        <button class="primary-button" id="workspace-open" type="button">Open Workspace</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="inline-note workspace-security-note">
+                    Workspace snapshots store connection/profile IDs, tab/split layout, divider ratios, working folders, toolbar actions, and window placement only.
+                    SSH passwords and private-key passphrases continue to use the existing secure credential flow and are never copied into a workspace.
+                  </div>
+                </div>
+              </section>
+
+              <section id="settings-tab-terminal-profiles" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">V6 LOCAL SHELLS</div>
+                    <h2>Terminal Profiles</h2>
+                  </div>
+                  <div class="header-actions">
+                    <button class="secondary-button" id="terminal-profile-detect" type="button">Detect Shells</button>
+                    <button class="primary-button" id="terminal-profile-save" type="button">Save Profile</button>
+                  </div>
+                </div>
+
+                <div class="windows-group terminal-profiles-settings">
+                  <p class="section-help">
+                    Create reusable local terminal profiles for PowerShell, Command Prompt, Git Bash, WSL, or any custom executable.
+                    Profiles can be launched instantly from Terminal → New Terminal or assigned to Local connections.
+                  </p>
+
+                  <div class="terminal-profiles-manager">
+                    <div class="terminal-profile-list-panel">
+                      <div class="command-manager-header">Local terminal profiles</div>
+                      <div id="terminal-profile-list" class="terminal-profile-list"></div>
+                      <div class="terminal-profile-list-buttons">
+                        <button class="secondary-button" id="terminal-profile-new" type="button">New Profile</button>
+                        <button class="secondary-button" id="terminal-profile-duplicate" type="button">Duplicate</button>
+                        <button class="danger-button" id="terminal-profile-delete" type="button">Delete</button>
+                      </div>
+                    </div>
+
+                    <div class="terminal-profile-editor">
+                      <div class="form-grid">
+                        <label>
+                          <span>Profile Name</span>
+                          <input id="terminal-profile-name" type="text" placeholder="Example: PowerShell Admin Project">
+                        </label>
+
+                        <label>
+                          <span>Profile Type</span>
+                          <select id="terminal-profile-kind">
+                            <option value="powershell">PowerShell</option>
+                            <option value="cmd">Command Prompt</option>
+                            <option value="git-bash">Git Bash</option>
+                            <option value="wsl">WSL</option>
+                            <option value="custom">Custom Executable</option>
+                          </select>
+                        </label>
+
+                        <label class="wide-field">
+                          <span>Executable</span>
+                          <div class="input-with-button">
+                            <input id="terminal-profile-executable" type="text" placeholder="powershell.exe or C:\Program Files\Git\bin\bash.exe" spellcheck="false">
+                            <button id="terminal-profile-browse-executable" type="button">Browse</button>
+                          </div>
+                        </label>
+
+                        <label class="wide-field">
+                          <span>Arguments — one argument per line</span>
+                          <textarea id="terminal-profile-args" rows="4" placeholder="--login&#10;-i" spellcheck="false"></textarea>
+                          <small class="field-help">Each non-empty line becomes one process argument. This avoids ambiguous command-line quoting.</small>
+                        </label>
+
+                        <label class="wide-field">
+                          <span>Start Folder</span>
+                          <div class="input-with-button">
+                            <input id="terminal-profile-working-directory" type="text" placeholder="Leave empty for drive root" spellcheck="false">
+                            <button id="terminal-profile-browse-folder" type="button">Browse</button>
+                          </div>
+                        </label>
+
+                        <label>
+                          <span>Icon / Short Label</span>
+                          <input id="terminal-profile-icon" type="text" maxlength="8" placeholder="PS, CMD, WSL, 🚀">
+                        </label>
+
+                        <label>
+                          <span>Profile Color</span>
+                          <div class="terminal-profile-color-row">
+                            <input id="terminal-profile-color" type="color" value="#58a6ff">
+                            <input id="terminal-profile-color-text" type="text" value="#58a6ff" maxlength="7" spellcheck="false">
+                          </div>
+                        </label>
+
+                        <label class="wide-field">
+                          <span>Environment Variables — NAME=value, one per line</span>
+                          <textarea id="terminal-profile-environment" rows="5" placeholder="APP_ENV=local&#10;NODE_ENV=development" spellcheck="false"></textarea>
+                          <small class="field-help">Stored in local settings. Do not place passwords, API keys, tokens, or other secrets here.</small>
+                        </label>
+
+                        <label class="check-row wide-field terminal-profile-default-row">
+                          <input id="terminal-profile-default" type="checkbox">
+                          <span>Use as the default profile for New Terminal</span>
+                        </label>
+                      </div>
+
+                      <div id="terminal-profile-detection-results" class="terminal-profile-detection-results hidden" aria-live="polite"></div>
+
+                      <div class="form-actions terminal-profile-editor-actions">
+                        <button class="secondary-button" id="terminal-profile-launch" type="button">Launch Profile</button>
+                        <button class="primary-button" id="terminal-profile-save-bottom" type="button">Save Profile</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="settings-tab-terminal-actions" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">TOOLBAR BUILDER V2</div>
+                    <h2>Terminal Actions</h2>
+                  </div>
+                  <button class="primary-button" id="terminal-toolbar-save" type="button">Save Toolbar</button>
+                </div>
+
+                <div class="windows-group terminal-actions-settings">
+                  <p class="section-help">
+                    Build a context-aware Terminal toolbar with drag-and-drop ordering, separators, button groups,
+                    dropdown menus, custom shortcuts, and Local / SSH / Administrator / Profile visibility rules.
+                    Adjacent actions with the same Group or Dropdown name are combined automatically.
+                  </p>
+
+                  <div class="terminal-actions-manager">
+                    <div class="terminal-actions-list-panel">
+                      <div class="command-manager-header">
+                        <span>Terminal toolbar items</span>
+                        <small class="terminal-action-drag-help">Drag to reorder</small>
+                      </div>
+                      <div id="terminal-action-list" class="terminal-action-list"></div>
+
+                      <div class="terminal-action-list-buttons">
+                        <button class="secondary-button" id="terminal-action-new" type="button">New Action</button>
+                        <button class="secondary-button" id="terminal-action-new-separator" type="button">New Separator</button>
+                        <button class="secondary-button" id="terminal-action-duplicate" type="button">Duplicate</button>
+                        <button class="secondary-button" id="terminal-action-move-up" type="button">Move Up</button>
+                        <button class="secondary-button" id="terminal-action-move-down" type="button">Move Down</button>
+                        <button class="danger-button" id="terminal-action-delete" type="button">Delete</button>
+                        <button class="secondary-button" id="terminal-action-reset" type="button">Reset Defaults</button>
+                      </div>
+                    </div>
+
+                    <div class="terminal-action-editor">
+                      <div class="form-grid">
+                        <label>
+                          <span>Toolbar Item</span>
+                          <select id="terminal-action-item-type">
+                            <option value="action">Action Button</option>
+                            <option value="separator">Separator</option>
+                          </select>
+                        </label>
+
+                        <label id="terminal-action-name-row">
+                          <span>Action Name</span>
+                          <input id="terminal-action-name" type="text" placeholder="Example: Clear Screen">
+                        </label>
+
+                        <label id="terminal-action-kind-row">
+                          <span>Action Type</span>
+                          <select id="terminal-action-kind">
+                            <optgroup label="Terminal">
+                              <option value="clear">Clear Screen</option>
+                              <option value="copyAll">Copy All Screen</option>
+                              <option value="copySelection">Copy Selection</option>
+                              <option value="paste">Paste</option>
+                              <option value="closeSession">Close Session</option>
+                            </optgroup>
+                            <optgroup label="Command / Text">
+                              <option value="sendText">Send Command + Enter</option>
+                              <option value="typeText">Type Text Only (No Enter)</option>
+                            </optgroup>
+                            <optgroup label="Control Keys">
+                              <option value="ctrlA">Ctrl+A</option>
+                              <option value="ctrlC">Ctrl+C</option>
+                              <option value="ctrlD">Ctrl+D</option>
+                              <option value="ctrlE">Ctrl+E</option>
+                              <option value="ctrlK">Ctrl+K</option>
+                              <option value="ctrlL">Ctrl+L</option>
+                              <option value="ctrlR">Ctrl+R</option>
+                              <option value="ctrlU">Ctrl+U</option>
+                              <option value="ctrlW">Ctrl+W</option>
+                              <option value="ctrlZ">Ctrl+Z</option>
+                            </optgroup>
+                            <optgroup label="Navigation Keys">
+                              <option value="enter">Enter</option>
+                              <option value="tab">Tab</option>
+                              <option value="escape">Escape</option>
+                              <option value="arrowUp">Arrow Up</option>
+                              <option value="arrowDown">Arrow Down</option>
+                              <option value="arrowLeft">Arrow Left</option>
+                              <option value="arrowRight">Arrow Right</option>
+                            </optgroup>
+                          </select>
+                        </label>
+
+                        <label id="terminal-action-text-row" class="wide-field hidden">
+                          <span id="terminal-action-text-label">Text or command to send</span>
+                          <textarea id="terminal-action-text" rows="4" placeholder="Example: php artisan optimize:clear"></textarea>
+                          <small id="terminal-action-text-help" class="field-help">
+                            Send Command + Enter executes the text. Type Text Only writes text without pressing Enter.
+                          </small>
+                        </label>
+
+                        <label class="check-row wide-field">
+                          <input id="terminal-action-enabled" type="checkbox" checked>
+                          <span>Show this item in the Terminal toolbar</span>
+                        </label>
+
+                        <label id="terminal-action-group-row">
+                          <span>Button Group <small>(optional)</small></span>
+                          <input id="terminal-action-group" type="text" maxlength="50" placeholder="Example: Clipboard">
+                          <small class="field-help">Adjacent actions with the same group name are displayed together.</small>
+                        </label>
+
+                        <label id="terminal-action-dropdown-row">
+                          <span>Dropdown Menu <small>(optional)</small></span>
+                          <input id="terminal-action-dropdown" type="text" maxlength="50" placeholder="Example: Laravel">
+                          <small class="field-help">Adjacent actions with this dropdown name collapse into one toolbar menu. Dropdown takes priority over Group.</small>
+                        </label>
+
+                        <label id="terminal-action-shortcut-row">
+                          <span>Keyboard Shortcut <small>(optional)</small></span>
+                          <input id="terminal-action-shortcut" type="text" maxlength="80" placeholder="Example: Ctrl+Alt+L">
+                          <small id="terminal-action-shortcut-help" class="field-help">Use Ctrl/Alt/Shift plus a key. Duplicate and reserved shortcuts are blocked.</small>
+                        </label>
+
+                        <label>
+                          <span>Visibility</span>
+                          <select id="terminal-action-visibility">
+                            <option value="all">All terminals</option>
+                            <option value="local">Local terminals only</option>
+                            <option value="ssh">SSH terminals only</option>
+                            <option value="admin">Administrator mode only</option>
+                            <option value="profile">Specific Terminal Profile</option>
+                          </select>
+                        </label>
+
+                        <label id="terminal-action-profile-row" class="hidden">
+                          <span>Terminal Profile</span>
+                          <select id="terminal-action-profile"></select>
+                          <small class="field-help">Profile-specific items create a different effective toolbar for each active profile.</small>
+                        </label>
+
+                        <label id="terminal-action-custom-icon-row" class="wide-field hidden">
+                          <span>Custom Icon</span>
+                          <input id="terminal-action-custom-icon" type="text" maxlength="8" placeholder="Example: 🚀, DB, PHP">
+                          <small class="field-help">Use an emoji or up to a few characters. It is stored as plain text, not HTML.</small>
+                        </label>
+
+                        <label id="terminal-action-color-row" class="wide-field terminal-action-color-field">
+                          <span>Button Color</span>
+                          <div class="terminal-action-color-controls">
+                            <label class="check-row compact-check-row">
+                              <input id="terminal-action-color-enabled" type="checkbox">
+                              <span>Use custom color</span>
+                            </label>
+                            <input id="terminal-action-color" type="color" value="#a78bfa" aria-label="Terminal action button color" disabled>
+                            <span id="terminal-action-color-value" class="terminal-action-color-value">Default</span>
+                          </div>
+                          <small class="field-help">Custom color changes the toolbar button accent and tint while keeping the label readable.</small>
+                        </label>
+                      </div>
+
+                      <div id="terminal-action-icon-block" class="icon-picker-block">
+                        <div class="icon-picker-title">Icon Picker</div>
+                        <div id="terminal-action-icon-picker" class="terminal-action-icon-picker"></div>
+                      </div>
+
+                      <div class="form-actions terminal-action-editor-actions">
+                        <button class="primary-button" id="terminal-action-save" type="button">Save Item</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+<section id="settings-tab-ai" class="settings-section">
+  <div class="section-title">
+    <div>
+      <div class="eyebrow">OPENAI REPORTS</div>
+      <h2>AI Settings</h2>
+    </div>
+  </div>
+
+  <div class="windows-group ai-settings-panel">
+    <p class="section-help">
+      Enable OpenAI-powered reports for the project in the active terminal location. The API key is saved locally with Electron secure storage and is never exported with settings backups.
+    </p>
+
+    <label class="report-option-row">
+      <input id="ai-reports-enabled-toggle" type="checkbox">
+      <span>
+        <strong>Enable AI project reports</strong>
+        <small>Shows the AI Report action in the Report toolbar and allows OpenAI analysis when you click it.</small>
+      </span>
+    </label>
+
+    <div class="form-grid ai-settings-grid">
+      <label>
+        <span>OpenAI Model</span>
+        <input id="ai-openai-model" type="text" value="gpt-5.5" placeholder="gpt-5.5">
+      </label>
+
+      <label>
+        <span>OpenAI API Key</span>
+        <input id="ai-openai-api-key" type="password" placeholder="Paste key to save or leave blank">
+      </label>
+    </div>
+
+    <div class="ai-key-status" id="ai-openai-key-status">API key status: checking...</div>
+
+    <div class="form-actions compact-actions">
+      <button class="primary-button" id="ai-save-settings" type="button">Save AI Settings</button>
+      <button class="secondary-button" id="ai-test-status" type="button">Check Status</button>
+      <button class="danger-button" id="ai-clear-api-key" type="button">Clear API Key</button>
+    </div>
+
+    <label class="report-option-row">
+      <input id="ai-include-commands-toggle" type="checkbox">
+      <span>
+        <strong>Include recent redacted terminal commands</strong>
+        <small>Helps AI understand what you were doing. Commands are redacted first, but avoid sending sensitive one-off commands.</small>
+      </span>
+    </label>
+
+    <label class="report-option-row">
+      <input id="ai-include-git-diff-toggle" type="checkbox">
+      <span>
+        <strong>Include redacted git diff details</strong>
+        <small>Off by default. When enabled, AI can describe changed buttons, menus, Blade files, routes, and functions more accurately.</small>
+      </span>
+    </label>
+
+    <div class="inline-warning">
+      AI reports send selected project metadata to OpenAI only when you click AI Report. For remote SSH paths, local file scanning is unavailable, so the report uses terminal activity only.
+    </div>
+  </div>
+</section>
+
+<section id="settings-tab-keys" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SSH KEY CENTER</div>
+                    <h2>SSH Keys</h2>
+                  </div>
+                </div>
+
+                <div class="ssh-key-help-grid">
+                  <div class="ssh-help-card">
+                    <strong>How to connect with SSH keys</strong>
+                    <ol>
+                      <li>Generate or select a private key below.</li>
+                      <li>Click <strong>Copy Public Key</strong>.</li>
+                      <li>Open your hosting control panel and find <strong>SSH Access</strong>, <strong>SSH Keys</strong>, or <strong>Authorized Keys</strong>.</li>
+                      <li>Add/import the copied public key, then enable SSH access for the hosting account.</li>
+                      <li>Go to <strong>Manage Connections</strong> and select the private key from the dropdown.</li>
+                    </ol>
+                  </div>
+
+                  <div class="ssh-help-card warning">
+                    <strong>Security rule</strong>
+                    <p>Only copy the public key ending with <code>.pub</code>. Never copy, upload, or share the private key.</p>
+                    <p>Manual server file: <code>~/.ssh/authorized_keys</code></p>
+                  </div>
+                </div>
+
+                <div class="windows-group ssh-key-generator-group">
+                  <div class="section-subtitle">
+                    <div>
+                      <div class="eyebrow">GENERATOR</div>
+                      <h3>Generate New SSH Key</h3>
+                    </div>
+                  </div>
+
+                  <p class="section-help">Generate an SSH key on this computer without opening a terminal window. The private key stays local.</p>
+
+                  <div class="form-grid">
+                    <label>
+                      <span>Key Name</span>
+                      <input id="key-name" type="text" value="advance-terminal">
+                    </label>
+
+                    <label>
+                      <span>Passphrase</span>
+                      <input id="key-passphrase" type="password" placeholder="Optional">
+                    </label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button class="primary-button" id="generate-key-button">Generate SSH Key</button>
+                  </div>
+
+                  <div id="key-result" class="key-result hidden">
+                    <label>
+                      <span>Public Key</span>
+                      <textarea id="generated-public-key" rows="5" readonly></textarea>
+                    </label>
+
+                    <div class="mini-grid">
+                      <label>
+                        <span>Private Key Path</span>
+                        <input id="generated-private-path" type="text" readonly>
+                      </label>
+
+                      <label>
+                        <span>Fingerprint</span>
+                        <input id="generated-fingerprint" type="text" readonly>
+                      </label>
+                    </div>
+
+                    <button class="secondary-button" id="copy-public-key">Copy Public Key</button>
+                  </div>
+                </div>
+
+                <div class="windows-group ssh-key-list-group">
+                  <div class="section-subtitle with-actions">
+                    <div>
+                      <div class="eyebrow">AVAILABLE KEYS</div>
+                      <h3>Private Key List</h3>
+                    </div>
+
+                    <div class="inline-actions">
+                      <button class="secondary-button" id="refresh-ssh-keys" type="button">Refresh Key List</button>
+                      <button class="secondary-button" id="open-system-ssh-folder" type="button">Open .ssh Folder</button>
+                      <button class="secondary-button" id="open-app-ssh-folder" type="button">Open App Key Folder</button>
+                      <button class="danger-button" id="archive-all-ssh-keys" type="button">Archive All Keys</button>
+                    </div>
+                  </div>
+
+                  <p class="section-help">These private keys are available in Manage Connections when Auth Type is Private Key Path. Archive moves keys into a local backup folder instead of permanently deleting them.</p>
+
+                  <div id="ssh-key-list" class="ssh-key-list">
+                    <div class="ssh-key-empty">Loading SSH keys...</div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="settings-tab-updates" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">APP UPDATES</div>
+                    <h2>Updates</h2>
+                  </div>
+                </div>
+
+                <div class="windows-group">
+                  <p class="section-help">
+                    Check GitHub Releases for newer installed versions and install downloaded updates.
+                    About and user guide information is now in the Help page.
+                  </p>
+                </div>
+
+                <div class="about-help-card update-card">
+  <div class="section-title compact update-card-header">
+    <div>
+      <div class="eyebrow">APP UPDATES</div>
+      <h3>Auto Update</h3>
+    </div>
+    <span id="update-status-pill" class="update-status-pill update-status-idle">Idle</span>
+  </div>
+  <p class="section-help">Checks GitHub Releases for newer installed versions. Update checks run only in the installed app.</p>
+  <div class="update-status-box">
+    <div>
+      <span>Current Version</span>
+      <strong id="update-current-version">Loading...</strong>
+    </div>
+    <div>
+      <span>Update Status</span>
+      <strong id="update-status-message">Update checker is idle.</strong>
+    </div>
+  </div>
+  <div class="update-progress hidden" id="update-progress-wrap" aria-hidden="true">
+    <div id="update-progress-bar"></div>
+  </div>
+  <div class="update-actions">
+    <button class="secondary-button" id="check-updates-button" type="button">Check for Updates</button>
+    <button class="primary-button hidden" id="install-update-button" type="button">Install and Restart</button>
+  </div>
+</div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div id="about-view" class="view">
+          <div class="content-header">
+            <div>
+              <div class="eyebrow">HELP</div>
+              <h1>Help & User Guide</h1>
+            </div>
+          </div>
+
+          <div class="settings-layout help-layout">
+
+            <div class="help-nav" aria-label="Help guide tabs">
+              <button class="help-tab active" data-help-tab="about" type="button">About</button>
+              <button class="help-tab" data-help-tab="quick-start" type="button">Quick Start</button>
+              <button class="help-tab" data-help-tab="features" type="button">Feature Map</button>
+              <button class="help-tab" data-help-tab="terminal" type="button">Terminal</button>
+              <button class="help-tab" data-help-tab="connections" type="button">Connections</button>
+              <button class="help-tab" data-help-tab="commands" type="button">Commands</button>
+              <button class="help-tab" data-help-tab="ssh-keys" type="button">SSH Keys</button>
+              <button class="help-tab" data-help-tab="safety" type="button">Terminal Safety</button>
+              <button class="help-tab" data-help-tab="restore" type="button">Restore / Repair</button>
+              <button class="help-tab" data-help-tab="ai" type="button">AI Reports</button>
+              <button class="help-tab" data-help-tab="reports" type="button">Reports</button>
+              <button class="help-tab" data-help-tab="live-console" type="button">Activity Feed</button>
+              <button class="help-tab" data-help-tab="view" type="button">View</button>
+              <button class="help-tab" data-help-tab="updates" type="button">Updates</button>
+              <button class="help-tab" data-help-tab="troubleshooting" type="button">Troubleshooting</button>
+            </div>
+
+            <div class="settings-content help-content">
+
+              <section id="help-tab-about" class="help-section active">
+                <div class="about-card large about-main-card help-about-card">
+                  <img class="about-logo-image large" src="../../build/icon.png" alt="Advance Terminal icon">
+                  <div class="about-main-content">
+                    <div class="eyebrow">OVERVIEW</div>
+                    <h2>Advance Terminal V6</h2>
+                    <p>Developer: <strong id="about-help-developer">Artlie Digital</strong></p>
+                    <p>Website: <strong id="about-help-website">www.artliedigital.com</strong></p>
+                    <p>Advance Terminal is a Windows desktop terminal for local shells, SSH servers, saved commands, restore points, AI reports, and safer day-to-day project work.</p>
+
+                    <div class="about-quick-grid">
+                      <div>
+                        <span>Start working</span>
+                        <strong><button class="help-link" type="button" data-help-nav="terminal">Go to Terminal</button></strong>
+                      </div>
+                      <div>
+                        <span>Configure SSH</span>
+                        <strong><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="keys">Go to Settings → SSH Keys</button></strong>
+                      </div>
+                      <div>
+                        <span>Protect commands</span>
+                        <strong><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Go to Settings → Terminal Safety</button></strong>
+                      </div>
+                      <div>
+                        <span>Recover settings</span>
+                        <strong><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Go to Settings → Restore Points</button></strong>
+                      </div>
+                      <div>
+                        <span>Reports</span>
+                        <strong><button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Go to Report → Report Options</button></strong>
+                      </div>
+                      <div>
+                        <span>Version</span>
+                        <strong id="about-help-version">Advance Terminal V6</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="help-tab-quick-start" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">START HERE</div>
+                    <h2>Quick Start</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ol class="about-feature-list help-steps">
+                    <li>Open <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="keys">Settings → SSH Keys</button> and generate or select your SSH key.</li>
+                    <li>Copy the public key and add it to your hosting account or server <code>authorized_keys</code>.</li>
+                    <li>Open <button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Terminal → Connections</button> and add your SSH server, username, port, auth type, and start folder.</li>
+                    <li>Click <strong>Connect</strong> in the left panel. The terminal should open directly inside the configured start folder.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> to keep safe paste, right-click behavior, and SSH folder lock under control.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Report → AI Report</button> to summarize the project work shown by the current terminal session.</li>
+                  </ol>
+                </div>
+              </section>
+
+              <section id="help-tab-features" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">WHAT IT DOES</div>
+                    <h2>Feature Map</h2>
+                  </div>
+                </div>
+                <div class="windows-group help-card-grid">
+                  <div class="help-mini-card">
+                    <h3>Terminal workspace</h3>
+                    <p>Open local terminals and SSH sessions, reorder tabs, view the current folder, and run commands.</p>
+                    <p><button class="help-link" type="button" data-help-nav="terminal">Go to Terminal</button></p>
+                  </div>
+                  <div class="help-mini-card">
+                    <h3>Connections</h3>
+                    <p>Save SSH/local profiles, groups, pinned servers, ports, auth type, and start folders.</p>
+                    <p><button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Open Manage Connections</button></p>
+                  </div>
+                  <div class="help-mini-card">
+                    <h3>Terminal Safety</h3>
+                    <p>Confirm multi-line paste, control right-click auto-enter, and lock SSH sessions to their start folder.</p>
+                    <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Go to Settings → Terminal Safety</button></p>
+                  </div>
+                  <div class="help-mini-card">
+                    <h3>Restore & Repair</h3>
+                    <p>Use restore points and valid settings backups to recover missing servers safely.</p>
+                    <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Go to Settings → Restore Points</button></p>
+                  </div>
+                  <div class="help-mini-card">
+                    <h3>AI Reports</h3>
+                    <p>Use OpenAI settings to generate a project-work report from the active terminal context.</p>
+                    <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="ai">Go to Settings → AI</button></p>
+                  </div>
+                  <div class="help-mini-card">
+                    <h3>Activity Feed</h3>
+                    <p>Keep the terminal clean while showing app events, errors, or optional redacted terminal output.</p>
+                    <p><button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Go to Report → Activity Feed Output</button></p>
+                  </div>
+                </div>
+              </section>
+
+              <section id="help-tab-terminal" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">WORKSPACE</div>
+                    <h2>Terminal Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>The Terminal page is where local and SSH sessions run. <button class="help-link" type="button" data-help-nav="terminal">Go to Terminal</button></li>
+                    <li>Use the left Connections panel to open saved local terminals or connect to SSH servers.</li>
+                    <li>Use the tab row to switch sessions. Tabs can be reordered by sliding them left or right.</li>
+                    <li>The <strong>Location</strong> header follows the active terminal folder. SSH start folders stay clean after connection.</li>
+                    <li>Toolbar actions such as Clear, Copy, Paste, Ctrl+C, Ctrl+L, Ctrl+D, and Close Session are configurable in <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="terminal-actions">Settings → Terminal Actions</button>.</li>
+                    <li>For SSH folder protection, use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button>.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-connections" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SERVER PROFILES</div>
+                    <h2>Connections Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Use <button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Terminal → + Add / Manage</button> to create, edit, duplicate, delete, pin, and group connections.</li>
+                    <li>Use connection filters for <strong>All</strong>, <strong>SSH</strong>, or <strong>Terminal</strong>.</li>
+                    <li>Set a start folder such as <code>/home/user/domains/site.com/public_html/</code> or <code>C:\Users\Art\Desktop\Project</code>.</li>
+                    <li>For SSH key auth, first go to <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="keys">Settings → SSH Keys</button>, then select the private key inside Manage Connections.</li>
+                    <li>Use the configured start folder with <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> to prevent accidental navigation outside the project path.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-commands" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SAVED ACTIONS</div>
+                    <h2>Commands Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Open the left panel <strong>Commands</strong> tab to run saved command shortcuts in the active terminal.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="terminal-actions">Settings → Terminal Actions</button> to customize the top terminal toolbar.</li>
+                    <li>Command shortcuts are best for repeated Laravel, Git, Composer, NPM, database, and server commands.</li>
+                    <li>Always confirm the active terminal tab before running a saved command.</li>
+                    <li>For accidental paste protection, keep <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> enabled.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-ssh-keys" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SECURE LOGIN</div>
+                    <h2>SSH Key Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ol class="about-feature-list help-steps">
+                    <li>Go to <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="keys">Settings → SSH Keys</button>.</li>
+                    <li>Generate a key or select an existing private key.</li>
+                    <li>Click <strong>Copy Public Key</strong>.</li>
+                    <li>Add the public key to your hosting panel, SSH Access page, or server <code>authorized_keys</code>.</li>
+                    <li>Open <button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Terminal → Manage Connections</button> and set <strong>Auth Type</strong> to private key.</li>
+                    <li>Select the private key from the dropdown and save the connection.</li>
+                  </ol>
+                  <p class="section-help">Only share the public key ending in <code>.pub</code>. Never upload or paste the private key.</p>
+                </div>
+              </section>
+
+              <section id="help-tab-safety" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">SAFETY</div>
+                    <h2>Terminal Safety Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> controls paste and SSH folder protection.</li>
+                    <li><strong>Confirm before multi-line paste</strong> stops accidental execution of pasted command blocks.</li>
+                    <li><strong>Right-click paste then Enter</strong> is useful for fast work but should stay off unless you need it.</li>
+                    <li><strong>Lock SSH terminal to start folder</strong> blocks obvious <code>cd /</code>, <code>cd ~</code>, nested SSH/SFTP jumps, and navigation outside the configured project folder.</li>
+                    <li>This is a safety guard, not server security. Real access limits still come from the SSH user, hosting permissions, and server configuration.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-restore" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">RECOVERY</div>
+                    <h2>Restore, Repair, Import & Export</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Settings → Restore Points</button> shows local settings restore points with date, file name, connection count, and preview.</li>
+                    <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button> restores missing connections only from valid readable backups.</li>
+                    <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="export-settings">Export Settings</button> saves a safe backup of your app configuration.</li>
+                    <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="import-settings">Import Settings</button> imports a backup after previewing it.</li>
+                    <li>Auto-backup runs at startup, before/after settings saves, and on normal close. Force close or power loss cannot always run close handlers, so startup/save backups are important.</li>
+                    <li>Exports skip passwords, passphrases, private keys, report history, and usage data.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-ai" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">OPENAI</div>
+                    <h2>AI Report Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Open <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="ai">Settings → AI</button> to enable AI reports, save the OpenAI API key, and choose the model.</li>
+                    <li>Open a local project terminal or SSH terminal, then use <button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Report → AI Report</button>.</li>
+                    <li>AI reports summarize what you appear to be working on, such as fixing a button, editing a Blade page, changing a menu, adding a function, or reviewing project files.</li>
+                    <li>For local projects, the report can use project path evidence such as git status, recent files, and redacted diffs when available.</li>
+                    <li>For SSH sessions, it uses terminal context and redacted command/output history. It should not claim file changes without evidence.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-reports" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">REPORTS</div>
+                    <h2>Reports & Audit Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Use <button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Report → Report Options</button> to choose report sections and Activity Feed terminal output mode.</li>
+                    <li>Use <strong>Generate Report</strong> to review real terminal jobs, measured work time, outcomes, and custom date ranges.</li>
+                    <li>Use <strong>Copy Last</strong>, <strong>Save Last</strong>, and <strong>History</strong> to keep report snapshots.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="report" data-report-tab="audit">Report → Audit Log</button> to review app events and settings activity.</li>
+                    <li>Reports and terminal output are redacted where possible, but command output can still contain sensitive project paths or tokens. Use Full output only when needed.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-live-console" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">ACTIVITY</div>
+                    <h2>Activity Feed Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>The footer shows the latest app activity. Click it to open or close the Activity Feed.</li>
+                    <li><button class="help-link" type="button" data-help-nav="view" data-help-action="toggle-activity-feed">Open Activity Feed</button> shows the full feed panel.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Report → Terminal output in Activity Feed</button> to choose Off, Errors only, or Full output.</li>
+                    <li>Default is Off so SSH banners and command output do not flood the feed.</li>
+                    <li>Use Copy or Clear inside the Activity Feed panel when reviewing or cleaning logs.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-view" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">DISPLAY</div>
+                    <h2>View & Layout Guide</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Use <button class="help-link" type="button" data-help-nav="view">View → Appearance</button> to change light/dark mode and notification position.</li>
+                    <li>The Connections panel is shown on the Terminal page and hidden on View, Settings, Report, and Help pages.</li>
+                    <li>The left Connections scrollbar is slim, and group headers show pinned and grouped servers.</li>
+                    <li>The Terminal tab row uses neutral active styling and slide-only drag/reorder.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-updates" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">VERSION</div>
+                    <h2>Updates & About</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li>Open <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="updates">Settings → Updates</button> to check the current version and update status.</li>
+                    <li>Open <button class="help-link" type="button" data-help-nav="help" data-help-tab-target="about">Help → About</button> for app overview and user guidance.</li>
+                    <li>Installed builds can check GitHub releases for newer installers.</li>
+                    <li>If an old installed version cannot click <strong>Install and Restart</strong>, install the newer installer manually once. Future builds include the handler fix.</li>
+                    <li>Before publishing a release, run <code>npm.cmd run check</code>, test terminal/SSH/settings/report pages, then build the Windows installer.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section id="help-tab-backup" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">BACKUP</div>
+                    <h2>Backup Shortcut</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <p class="section-help">This legacy Help toolbar button now points to the full restore guide.</p>
+                  <p><button class="help-link" type="button" data-help-nav="help" data-help-tab-target="restore">Go to Restore / Repair Guide</button></p>
+                </div>
+              </section>
+
+              <section id="help-tab-troubleshooting" class="help-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">FIX COMMON ISSUES</div>
+                    <h2>Troubleshooting</h2>
+                  </div>
+                </div>
+                <div class="windows-group">
+                  <ul class="about-feature-list">
+                    <li><strong>SSH authentication failed:</strong> confirm username, port, private key, passphrase, and public key installed on hosting. Start at <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="keys">Settings → SSH Keys</button>.</li>
+                    <li><strong>SSH opens blank:</strong> update to the latest build with the safe sender fix, then reconnect.</li>
+                    <li><strong>Wrong folder:</strong> edit the connection start folder from <button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Terminal → Manage Connections</button>.</li>
+                    <li><strong>Cannot leave folder:</strong> disable or adjust <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> only when you intentionally need to leave the start folder.</li>
+                    <li><strong>Missing servers:</strong> use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Settings → Restore Points</button> or <button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button>.</li>
+                    <li><strong>Activity Feed too noisy:</strong> use <button class="help-link" type="button" data-help-nav="report" data-report-tab="options">Report → Terminal output in Activity Feed</button> and set it to Off.</li>
+                    <li><strong>AI report not working:</strong> enable AI and save the key in <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="ai">Settings → AI</button>.</li>
+                  </ul>
+                </div>
+              </section>
+
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <div class="statusbar-identity">
+        <span id="footer-ready-text">Ready</span>
+        <span class="statusbar-divider"></span>
+        <span>Advance Terminal</span>
+        <span class="statusbar-divider"></span>
+        <span class="statusbar-runtime-item">Uptime <strong id="runtime-uptime">00:00:00</strong></span>
+        <span class="statusbar-divider"></span>
+        <span class="statusbar-runtime-item">Memory <strong id="runtime-memory">—</strong></span>
+        <span class="statusbar-divider"></span>
+        <span class="statusbar-runtime-item">Tab <strong id="runtime-current-tab">No active tab</strong></span>
+      </div>
+
+      <span class="statusbar-spacer"></span>
+
+      <div id="live-process-box" class="live-process-box" aria-live="polite" title="Latest activity">
+        <span class="live-process-label">Activity</span>
+        <span id="live-process-text" class="live-process-text">No activity yet.</span>
+      </div>
+
+    </footer>
+
+    <div id="command-palette-modal" class="modal command-palette-modal hidden" role="dialog" aria-modal="true" aria-labelledby="command-palette-title" aria-hidden="true">
+      <div class="command-palette-box">
+        <div class="command-palette-header">
+          <div>
+            <div class="eyebrow">V6.4 QUICK ACCESS</div>
+            <h2 id="command-palette-title">Command Palette</h2>
+          </div>
+          <div class="command-palette-shortcut" aria-label="Keyboard shortcut">Ctrl+Shift+P</div>
+        </div>
+
+        <label class="command-palette-search-row">
+          <span class="command-palette-search-icon" aria-hidden="true">⌕</span>
+          <input
+            id="command-palette-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search commands, profiles, connections, tabs, settings..."
+            aria-controls="command-palette-results"
+            aria-autocomplete="list"
+          >
+          <button id="command-palette-close" class="command-palette-close" type="button" title="Close Command Palette" aria-label="Close Command Palette">×</button>
+        </label>
+
+        <div class="command-palette-meta">
+          <span id="command-palette-summary">Type to search everything.</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> Navigate <kbd>Enter</kbd> Run <kbd>Esc</kbd> Close</span>
+        </div>
+
+        <div id="command-palette-results" class="command-palette-results" role="listbox" aria-label="Command Palette results"></div>
+      </div>
+    </div>
+
+    <div id="secret-modal" class="modal hidden">
+      <div class="modal-box">
+        <h2 id="secret-modal-title">Connection Secret</h2>
+        <p id="secret-modal-message">Enter the required secret to connect.</p>
+        <input id="secret-modal-input" type="password" placeholder="Password or passphrase">
+        <label id="secret-remember-row" class="check-row secret-remember-row hidden">
+          <input id="secret-remember-password" type="checkbox">
+          <span>Remember password</span>
+        </label>
+        <div class="modal-actions">
+          <button id="secret-modal-cancel" class="secondary-button">Cancel</button>
+          <button id="secret-modal-connect" class="primary-button">Connect</button>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="add-connection-modal" class="modal hidden">
+      <div class="modal-box add-connection-modal-box">
+        <div class="modal-title-row">
+          <div>
+            <h2>Manage Connections</h2>
+            <p>Create, edit, duplicate, or delete terminal connections. Duplicate names are allowed.</p>
+          </div>
+        </div>
+
+        <div class="connection-manager-grid">
+          <aside class="connection-manager-list">
+            <div class="connection-manager-header">
+              <span>Connection Servers</span>
+            </div>
+
+            <div id="manage-connection-list" class="manage-connection-list"></div>
+
+            <div class="connection-manager-actions">
+              <button id="modal-new-ssh" class="secondary-button" type="button">New SSH</button>
+              <button id="modal-new-local" class="secondary-button" type="button">New Local</button>
+              <button id="modal-duplicate" class="secondary-button" type="button">Duplicate</button>
+              <button id="modal-delete" class="danger-button" type="button">Delete</button>
+            </div>
+          </aside>
+
+          <section class="connection-manager-form">
+            <div class="modal-form-grid">
+              <label>
+                <span id="add-connection-name-label">SSH Name</span>
+                <input id="add-connection-name" type="text" placeholder="Advance Terminal">
+              </label>
+
+              <label>
+                <span>Terminal Type</span>
+                <select id="add-connection-type">
+                  <option value="remote">SSH</option>
+                  <option value="local">Local Terminal</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Group / Folder</span>
+                <input id="add-connection-group" type="text" list="connection-group-options" placeholder="Production, Staging, Local">
+                <datalist id="connection-group-options"></datalist>
+              </label>
+
+              <label class="local-add-only">
+                <span>Terminal Profile</span>
+                <select id="add-connection-profile">
+                  <option value="">Default Terminal Profile</option>
+                </select>
+                <small class="field-help">The connection start folder below overrides the profile start folder when set.</small>
+              </label>
+
+              <label class="remote-add-only">
+                <span>Host/IP</span>
+                <input id="add-connection-host" type="text" placeholder="example.com or 192.168.1.10">
+              </label>
+
+              <label class="remote-add-only">
+                <span>Port</span>
+                <input id="add-connection-port" type="number" min="1" max="65535" value="22">
+              </label>
+
+              <label class="remote-add-only">
+                <span>SSH Username</span>
+                <input id="add-connection-username" type="text" placeholder="ssh username">
+              </label>
+
+              <label class="remote-add-only">
+                <span>Auth Type</span>
+                <select id="add-connection-auth-type">
+                  <option value="">Select authentication type</option>
+                  <option value="password">Password</option>
+                  <option value="key">Private Key Path</option>
+                </select>
+              </label>
+
+              <label class="remote-add-only password-add-only wide-field">
+                <span>SSH Password</span>
+                <input id="add-connection-password" type="password" placeholder="Optional saved SSH password">
+              </label>
+
+              <label class="remote-add-only password-add-only check-row wide-field">
+                <input id="add-connection-save-password" type="checkbox" checked>
+                <span>Remember password</span>
+              </label>
+
+              <label class="remote-add-only key-add-only wide-field">
+                <span>Private Key</span>
+                <div class="input-with-button">
+                  <select id="add-connection-private-key-path">
+                    <option value="">Loading SSH keys...</option>
+                  </select>
+                  <button id="add-connection-manage-keys" type="button">Manage Keys</button>
+                </div>
+                <div id="selected-private-key-path" class="field-help">Select a key from Settings → SSH Keys.</div>
+              </label>
+
+              <label class="remote-add-only key-add-only">
+                <span>Key Passphrase</span>
+                <input id="add-connection-passphrase" type="password" placeholder="Optional, only if the key needs it">
+              </label>
+
+              <label class="remote-add-only key-add-only check-row">
+                <input id="add-connection-save-passphrase" type="checkbox">
+                <span>Remember passphrase locally</span>
+              </label>
+
+              <label class="wide-field">
+                <span>Start Folder</span>
+                <input id="add-connection-start-folder" type="text" placeholder="/var/www/html or C:\Projects">
+              </label>
+
+              <div class="connection-reliability-card remote-add-only wide-field">
+                <div>
+                  <strong>Connection Reliability</strong>
+                  <p>Keepalive reduces idle SSH disconnects. Auto reconnect is limited, and it will not retry after authentication errors.</p>
+                </div>
+
+                <label class="check-row reliability-check">
+                  <input id="add-connection-keep-alive" type="checkbox" checked>
+                  <span>Keep SSH connection alive</span>
+                </label>
+
+                <label class="check-row reliability-check">
+                  <input id="add-connection-auto-reconnect" type="checkbox">
+                  <span>Auto reconnect if disconnected</span>
+                </label>
+
+                <div class="reliability-grid">
+                  <label>
+                    <span>Reconnect attempts</span>
+                    <input id="add-connection-reconnect-attempts" type="number" min="1" max="20" value="3">
+                  </label>
+
+                  <label>
+                    <span>Reconnect delay seconds</span>
+                    <input id="add-connection-reconnect-delay" type="number" min="1" max="300" value="5">
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div id="add-connection-root-warning" class="inline-warning">
+              Warning: Start Folder is empty. Advance Terminal will open the root folder.
+            </div>
+
+            <div class="inline-note">
+              Saved passwords and passphrases are stored locally in this app user-data folder. If password is not saved, Advance Terminal will ask only when SSH requests it.
+            </div>
+          </section>
+        </div>
+
+        <div class="modal-actions">
+          <button id="add-connection-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="add-connection-save" class="primary-button" type="button">Save Connection</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="command-manager-modal" class="modal hidden">
+      <div class="modal-box command-manager-modal-box">
+        <div class="modal-title-row">
+          <div>
+            <h2>Manage Commands</h2>
+            <p>Create, edit, duplicate, or delete command shortcuts. Duplicate names are allowed.</p>
+          </div>
+        </div>
+
+        <div class="command-manager-grid">
+          <aside class="command-manager-list">
+            <div class="command-manager-header">
+              <span>Command Shortcuts</span>
+            </div>
+
+            <div id="manage-command-list" class="manage-command-list"></div>
+
+            <div class="command-manager-actions">
+              <button id="modal-new-command" class="secondary-button" type="button">New Command</button>
+              <button id="modal-duplicate-command" class="secondary-button" type="button">Duplicate</button>
+              <button id="modal-delete-command" class="danger-button" type="button">Delete</button>
+            </div>
+          </aside>
+
+          <section class="command-manager-form">
+            <label>
+              <span>Shortcut Name</span>
+              <input id="manage-command-name" type="text" placeholder="Laravel optimize clear">
+            </label>
+
+            <label>
+              <span>Category</span>
+              <input id="manage-command-category" type="text" list="command-category-options" placeholder="Laravel" autocomplete="off" spellcheck="false">
+              <datalist id="command-category-options">
+                <option value="Laravel"></option>
+                <option value="Git"></option>
+                <option value="Composer"></option>
+                <option value="NPM"></option>
+                <option value="Server"></option>
+                <option value="Database"></option>
+                <option value="Custom"></option>
+              </datalist>
+            </label>
+
+            <label>
+              <span>Command to Send</span>
+              <textarea id="manage-command-value" rows="8" placeholder="cd {project_path} && php artisan optimize:clear"></textarea>
+            </label>
+
+            <div class="command-variable-note">
+              <strong>Variables:</strong> use placeholders like <code>{project_path}</code>, <code>{branch}</code>, or <code>{domain}</code>. Advance Terminal asks for values before sending the command and does not save those values.
+              <br><strong>Safety:</strong> destructive or high-risk shortcuts show a confirmation before running.
+            </div>
+
+            <div class="inline-note">
+              Click Run from the Commands tab to send the saved command to the active terminal.
+            </div>
+          </section>
+        </div>
+
+        <div class="modal-actions">
+          <button id="command-manager-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="command-manager-save" class="primary-button" type="button">Save Command</button>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="connection-health-modal" class="modal hidden">
+      <div class="modal-box connection-health-modal-box" role="dialog" aria-modal="true" aria-labelledby="connection-health-title">
+        <div class="modal-title-row">
+          <div>
+            <h2 id="connection-health-title">Connection Health Check</h2>
+            <p id="connection-health-subtitle">Test SSH/login, start folder, and project detection before opening a terminal.</p>
+          </div>
+        </div>
+
+        <div id="connection-health-status" class="connection-health-status">
+          <span class="connection-health-dot"></span>
+          <div>
+            <strong id="connection-health-summary">No result yet.</strong>
+            <span id="connection-health-meta">Run Test Connection from a connection card.</span>
+          </div>
+        </div>
+
+        <div id="connection-health-badges" class="connection-health-badges"></div>
+        <div id="connection-health-checks" class="connection-health-checks"></div>
+
+        <div class="modal-actions">
+          <button id="connection-health-close" class="primary-button" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-modal" class="modal confirm-modal hidden">
+      <div class="modal-box confirm-modal-box" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+        <h2 id="confirm-modal-title">Confirm</h2>
+        <p id="confirm-modal-message">Continue?</p>
+        <div class="modal-actions">
+          <button id="confirm-modal-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="confirm-modal-confirm" class="primary-button" type="button">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="terminal-tab-rename-modal" class="modal terminal-tab-rename-modal hidden">
+      <div class="modal-box terminal-tab-rename-box" role="dialog" aria-modal="true" aria-labelledby="terminal-tab-rename-title">
+        <h2 id="terminal-tab-rename-title">Rename Terminal Tab</h2>
+        <p>Set a custom name for this tab. Leave it blank to use the connection or profile name.</p>
+        <input id="terminal-tab-rename-input" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Tab name">
+        <div class="modal-actions">
+          <button id="terminal-tab-rename-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="terminal-tab-rename-save" class="primary-button" type="button">Save Name</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="safe-paste-modal" class="modal safe-paste-modal hidden">
+      <div class="modal-box safe-paste-modal-box" role="dialog" aria-modal="true" aria-labelledby="safe-paste-title">
+        <h2 id="safe-paste-title">Multi-line Paste Detected</h2>
+        <p id="safe-paste-message">The clipboard contains multiple lines.</p>
+        <textarea id="safe-paste-preview" class="safe-paste-preview" readonly spellcheck="false"></textarea>
+        <div class="inline-note">
+          Line breaks are sent to the shell like pressing Enter. Choose "Paste and execute" only when you trust the full clipboard content.
+        </div>
+        <div class="modal-actions">
+          <button id="safe-paste-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="safe-paste-single-line" class="secondary-button" type="button">Paste as One Line</button>
+          <button id="safe-paste-execute" class="primary-button" type="button">Paste and Execute</button>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="session-report-modal" class="modal hidden">
+      <div class="modal-box report-modal-box" role="dialog" aria-modal="true" aria-labelledby="session-report-title">
+        <div class="modal-title-row">
+          <div>
+            <h2 id="session-report-title">Work Activity Report</h2>
+            <p>Privacy-safe report of actual terminal jobs, active work time, outcomes, scoped sessions, and activity analysis. Secrets and raw terminal output are not included.</p>
+          </div>
+        </div>
+
+        <div class="report-control-row">
+          <label for="report-scope-select">
+            <span>Report Scope</span>
+            <select id="report-scope-select">
+              <option value="all">All Terminals</option>
+              <option value="active">Active Terminal</option>
+              <option value="ssh">SSH Only</option>
+              <option value="local">Local Terminal Only</option>
+            </select>
+          </label>
+          <label for="report-date-filter-select">
+            <span>Report Date</span>
+            <select id="report-date-filter-select">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7">Last 7 Days</option>
+              <option value="last30">Last 30 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </label>
+          <div class="report-privacy-note">Real Job rows use redacted command summaries and never include passwords, keys, tokens, or raw terminal output.</div>
+          <div id="report-custom-range" class="report-custom-range hidden">
+            <label for="report-range-from">
+              <span>From</span>
+              <input id="report-range-from" type="datetime-local">
+            </label>
+            <label for="report-range-to">
+              <span>To</span>
+              <input id="report-range-to" type="datetime-local">
+            </label>
+            <button id="report-range-apply" class="secondary-button" type="button">Apply Range</button>
+            <small id="report-range-help">Maximum saved reporting range: 90 days.</small>
+          </div>
+        </div>
+
+        <div class="report-summary-grid">
+          <div class="report-summary-card">
+            <span>Scope</span>
+            <strong id="report-tab-name">No active tab</strong>
+          </div>
+          <div class="report-summary-card">
+            <span>Active Work</span>
+            <strong id="report-duration">00:00:00</strong>
+          </div>
+          <div class="report-summary-card">
+            <span>Jobs</span>
+            <strong id="report-job-count">0</strong>
+          </div>
+          <div class="report-summary-card">
+            <span>Commands</span>
+            <strong id="report-command-count">0</strong>
+          </div>
+          <div class="report-summary-card">
+            <span>Findings</span>
+            <strong id="report-finding-count">0</strong>
+          </div>
+        </div>
+
+        <div class="report-preview-wrap">
+          <textarea id="session-report-output" class="report-output" spellcheck="false" readonly></textarea>
+        </div>
+
+        <div class="modal-actions report-actions">
+          <button id="session-report-ai-generate" class="secondary-button" type="button">Generate AI Project Report</button>
+          <button id="session-report-copy" class="secondary-button" type="button">Copy Report</button>
+          <button id="session-report-download" class="secondary-button" type="button">Save Report</button>
+          <button id="session-report-save-history" class="secondary-button" type="button">Save to History</button>
+          <button id="session-report-close" class="primary-button" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="report-history-modal" class="modal hidden">
+      <div class="modal-box report-history-modal-box" role="dialog" aria-modal="true" aria-labelledby="report-history-title">
+        <div class="modal-title-row">
+          <div>
+            <h2 id="report-history-title">Report History</h2>
+            <p>Saved daily report snapshots. Reports include analysis summaries only and do not include raw commands or secrets.</p>
+          </div>
+        </div>
+
+        <div id="report-history-list" class="report-history-list"></div>
+
+        <div class="modal-actions report-actions">
+          <button id="report-history-delete-all" class="secondary-button danger-soft" type="button">Clear History</button>
+          <button id="report-history-close" class="primary-button" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="live-console" class="live-console is-collapsed" aria-live="polite">
+      <div class="live-console-tab-row">
+        <button id="live-console-tab" class="live-console-tab" type="button" aria-expanded="false">
+          <span class="live-console-dot"></span>
+          <span class="live-console-tab-text">Activity Feed</span>
+          <span class="live-console-tab-arrow">▲</span>
+        </button>
+        <button id="live-console-dismiss" class="live-console-dismiss" type="button" title="Hide Activity Feed tab" aria-label="Hide Activity Feed tab">×</button>
+      </div>
+
+      <div class="live-console-panel">
+        <div id="live-console-resize-handle" class="live-console-resize-handle" title="Drag up or down to resize Activity Feed" aria-hidden="true"></div>
+        <div class="live-console-header">
+          <strong>Activity Feed</strong>
+          <div class="live-console-actions">
+            <button id="live-console-copy" class="mini-action-button" type="button">Copy</button>
+            <button id="live-console-clear" class="mini-action-button" type="button">Clear</button>
+          </div>
+        </div>
+
+        <div id="live-console-output" class="live-console-output">
+          <div class="live-console-empty">No activity yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidebar-context-menu" class="sidebar-context-menu hidden" role="menu" aria-hidden="true"></div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true" tabindex="0" title="Click to dismiss"></div>
+  </div>
+
+  <script src="../../node_modules/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="./js/renderer-foundation.js"></script>
+  <script src="./js/renderer-terminal-helpers.js"></script>
+  <script src="./js/renderer-connection-helpers.js"></script>
+  <script src="./js/renderer-report-helpers.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+{
+  "name": "advance-terminal-standalone",
+  "version": "6.5.0",
+  "description": "Advance Terminal V6 by Artlie Digital. A Windows desktop terminal workspace with reusable local shell profiles, SSH connections, server management, terminal actions, audit logs, reports, and safe clipboard controls.",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "check": "npm run check:syntax && npm run check:foundation",
+    "check:syntax": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/main/store.js && node --check src/main/secret-store.js && node --check src/main/key-manager.js && node --check src/main/terminal-manager.js && node --check src/renderer/js/renderer-foundation.js && node --check src/renderer/js/renderer-terminal-helpers.js && node --check src/renderer/js/renderer-connection-helpers.js && node --check src/renderer/js/renderer-report-helpers.js && node --check src/renderer/renderer.js",
+    "check:foundation": "node --check scripts/check-foundation.js && node scripts/check-foundation.js",
+    "verify": "npm run check",
+    "postinstall": "electron-builder install-app-deps",
+    "pack:win": "npm run check && electron-builder --win dir --x64 --publish never",
+    "dist:win": "npm run check && electron-builder --win nsis --x64 --publish never",
+    "release:win": "npm run check && electron-builder --win nsis --x64 --publish always",
+    "release:win:draft": "npm run check && electron-builder --win nsis --x64 --publish onTagOrDraft"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "node-pty": "^1.0.0",
+    "ssh2": "^1.16.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  },
+  "devDependencies": {
+    "electron": "32.3.3",
+    "electron-builder": "26.15.0"
+  },
+  "build": {
+    "appId": "com.artliedigital.advanceterminal",
+    "productName": "Advance Terminal",
+    "copyright": "Copyright © 2026 Artlie Digital",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md",
+      "build/icon.png"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Advance Terminal",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "include": "build/installer-dependency-checks.nsh"
+    },
+    "electronVersion": "32.3.3",
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "build",
+        "filter": [
+          "icon.ico",
+          "icon.png",
+          "installer-dependency-checks.nsh"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "eiltraX",
+        "repo": "advance-terminal",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "license": "MIT",
+  "author": "Artlie Digital",
+  "homepage": "https://www.artliedigital.com"
+}

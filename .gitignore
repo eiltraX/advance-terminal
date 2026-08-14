@@ -1,0 +1,51 @@
+@'
+# Dependencies
+node_modules/
+
+# Electron build output
+dist/
+release/
+
+# Local patch/backups
+__smallzip/
+v5.zip
+*.bak
+*.tmp
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor files
+.vscode/
+.idea/
+
+# Runtime/local data
+storage/
+temp/
+tmp/
+'@ | Set-Content -Encoding UTF8 ".gitignore"
+# Obsolete local patch documentation
+PATCH_README.txt
+
+# Local source backups
+*.backup-*
+
+# Obsolete one-off release helper
+scripts/prepare-v4-release.js
+
+# Obsolete one-off repair helpers
+scripts/fix-renderer-selector-startup.js
+scripts/fix-update-install-and-terminal-guards.js
