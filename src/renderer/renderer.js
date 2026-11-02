@@ -151,29 +151,10 @@ const state = {
   draggingCommandId: null,
   draggingTerminalId: null,
   terminalTabDrag: null,
-  closedTerminalTabs: [],
-  editingTerminalTabGroupId: null,
   editingTerminalActionId: null,
-  draggingTerminalActionId: null,
-  terminalToolbarDropdownMenu: null,
-  editingTerminalProfileId: null,
-  editingWorkspaceId: null,
-  workspaceDraftMode: false,
-  workspaceRestoreInFlight: false,
-  workspaceStartupRestoreAttempted: false,
-  pinnedTabsStartupRestoreAttempted: false,
-  activeWorkspaceId: null,
-  detectedTerminalShells: [],
-  commandPaletteOpen: false,
-  commandPaletteEntries: [],
-  commandPaletteResults: [],
-  commandPaletteSelectedIndex: 0,
-  commandPalettePreviousFocus: null,
   terminals: new Map(),
-  terminalGroups: new Map(),
   activeTerminalId: null,
-  activeTerminalGroupId: null,
-  splitResize: null,
+  closedTerminalTabs: [],
   pendingSecret: null,
   pendingSecretMeta: null,
   pendingConfirmResolve: null,
@@ -183,9 +164,6 @@ const state = {
   liveConsoleHeight: 320,
   liveConsoleResize: null,
   liveConsoleDock: 'right',
-  liveConsoleDismissed: false,
-  terminalHostResizeObserver: null,
-  terminalFitAnimationFrame: null,
   liveConsoleLogs: [],
   liveProcessLogs: [],
   activityFeedReady: false,
@@ -206,7 +184,7 @@ const state = {
   busyActions: new Set(),
   connectionAttemptInFlight: false,
   connectionHealthCheckInFlight: null,
-  terminalActionInFlight: false,
+  terminalActionInFlightSessionIds: new Set(),
   usageLastCheckpoint: Date.now(),
   currentReportText: '',
   currentReportSnapshot: null,
@@ -233,9 +211,6 @@ const USAGE_SAVE_DEBOUNCE_MS = 2500;
 const SETTINGS_SAVE_DEBOUNCE_MS = 800;
 const CONNECTIONS_PANEL_COLLAPSED_STORAGE_KEY = 'advanceTerminal.connectionsPanelCollapsed';
 const PINNED_CONNECTIONS_STORAGE_KEY = 'advanceTerminal.pinnedConnections';
-const COMMAND_PALETTE_RECENTS_STORAGE_KEY = 'advanceTerminal.commandPaletteRecents';
-const COMMAND_PALETTE_MAX_RESULTS = 60;
-const COMMAND_PALETTE_MAX_RECENTS = 12;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -304,7 +279,8 @@ function normalizeActivityFeedTerminalOutputMode(value) {
 }
 
 function getActivityFeedTerminalOutputMode() {
-  return normalizeActivityFeedTerminalOutputMode(state.settings?.ui?.activityFeed?.terminalOutput);
+  // Do not duplicate or inspect terminal output for a removed panel.
+  return 'off';
 }
 
 function updateActivityFeedOutputControls(mode = getActivityFeedTerminalOutputMode()) {
@@ -336,46 +312,63 @@ async function setActivityFeedTerminalOutputMode(mode) {
   await saveSettings({ toastMessage: '', debounce: true, refresh: false });
 }
 
+// In-app messages are separate from native Windows command-completion notifications.
+// Store this UI preference locally, without touching server/SSH settings.
+const IN_APP_TOAST_MODE_STORAGE_KEY = 'advanceTerminal.ui.inAppToastMode';
+const IN_APP_TOAST_DEFAULT_MODE = 'important';
+const IN_APP_TOAST_MODES = new Set(['all', 'important', 'errors', 'off']);
+const inAppToastDedupe = new Map();
+
+function normalizeInAppToastMode(value) {
+  return IN_APP_TOAST_MODES.has(value) ? value : IN_APP_TOAST_DEFAULT_MODE;
+}
+
+function getInAppToastMode() {
+  try {
+    return normalizeInAppToastMode(localStorage.getItem(IN_APP_TOAST_MODE_STORAGE_KEY));
+  } catch (_error) {
+    return IN_APP_TOAST_DEFAULT_MODE;
+  }
+}
+
+function updateInAppToastModeControl() {
+  const select = $('#in-app-toast-mode-select');
+  if (select) select.value = getInAppToastMode();
+}
+
+function setInAppToastMode(value) {
+  const mode = normalizeInAppToastMode(value);
+  try {
+    localStorage.setItem(IN_APP_TOAST_MODE_STORAGE_KEY, mode);
+  } catch (_error) {
+    // Private/blocked storage: keep the application working with quiet defaults.
+  }
+  inAppToastDedupe.clear();
+  dismissToast();
+  updateInAppToastModeControl();
+}
+
+function shouldDisplayInAppToast(level, { force = false } = {}) {
+  if (force) return true; // Explicitly requested settings preview.
+  const mode = getInAppToastMode();
+  if (mode === 'all') return true;
+  if (mode === 'important') return level === 'warning' || level === 'error';
+  if (mode === 'errors') return level === 'error';
+  return false;
+}
+
 function previewNotification() {
   const label = getNotificationPosition()
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-  showToast(`Notification preview: ${label}`, 4500, 'info');
+  showToast(`Notification preview: ${label}`, 4500, 'info', { force: true });
 }
 
 
-function appendActivityFeedEvent(message, level = 'info', options = {}) {
-  if (!state.activityFeedReady && !options.allowBeforeReady) {
-    return;
-  }
-
-  const cleaned = stripTerminalControlText(String(message || ''))
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join(' · ')
-    .trim();
-
-  if (!cleaned) {
-    return;
-  }
-
-  const dedupeMs = Number.isFinite(Number(options.dedupeMs)) ? Number(options.dedupeMs) : 1000;
-  const key = `${level}:${cleaned}`;
-  const now = Date.now();
-
-  if (
-    state.activityFeedLastEvent
-    && state.activityFeedLastEvent.key === key
-    && now - state.activityFeedLastEvent.time < dedupeMs
-  ) {
-    return;
-  }
-
-  state.activityFeedLastEvent = { key, time: now };
-  appendLiveConsole(cleaned, level);
+function appendActivityFeedEvent(_message, _level = 'info', _options = {}) {
+  // Activity Feed retired from v5. Keep old call sites harmless.
 }
 
 function getActivityViewLabel(view) {
@@ -411,7 +404,7 @@ function dismissToast() {
   toast.classList.remove('toast-replay');
 }
 
-function showToast(message, timeout = 3200, type = null) {
+function showToast(message, timeout = 3200, type = null, options = {}) {
   const toast = $('#toast');
   let toastTimeout = timeout;
   let toastTypeOverride = type;
@@ -429,6 +422,24 @@ function showToast(message, timeout = 3200, type = null) {
     ? Number(toastTimeout)
     : 3200;
   const toastType = inferToastType(message, toastTypeOverride);
+  if (!shouldDisplayInAppToast(toastType, options)) return;
+
+  // Prevent repeated identical warnings/errors from obscuring the terminal.
+  // Different messages still appear. Settings preview deliberately bypasses dedupe.
+  if (!options.force && (toastType === 'warning' || toastType === 'error')) {
+    const now = Date.now();
+    const key = `${toastType}:${String(message)}`;
+    const windowMs = toastType === 'error' ? 6000 : 20000;
+    const previous = inAppToastDedupe.get(key);
+    if (previous !== undefined && now - previous < windowMs) return;
+    inAppToastDedupe.set(key, now);
+    if (inAppToastDedupe.size > 64) {
+      for (const [oldKey, seenAt] of inAppToastDedupe) {
+        if (now - seenAt > 30000) inAppToastDedupe.delete(oldKey);
+      }
+      if (inAppToastDedupe.size > 64) inAppToastDedupe.clear();
+    }
+  }
 
   // Replace the single live notification and restart its entrance animation.
   // The forced reflow makes repeated clicks immediately close and visibly reopen it.
@@ -449,99 +460,12 @@ function showToast(message, timeout = 3200, type = null) {
 }
 
 
-const TERMINAL_PROCESS_SAFETY_TIMEOUT_MS = 60 * 60 * 1000;
-const TERMINAL_BUSY_ALLOWED_ACTIONS = new Set(['ctrlC', 'closeSession']);
-const TERMINAL_PROCESS_SAFE_ACTIONS = new Set([
-  'clear',
-  'copyAll',
-  'copySelection',
-  'paste',
-  'ctrlC',
-  'closeSession'
-]);
-
-const TERMINAL_ACTION_KIND_LABELS = Object.freeze({
-  clear: 'Clear Screen',
-  copyAll: 'Copy All Screen',
-  copySelection: 'Copy Selection',
-  paste: 'Paste',
-  ctrlA: 'Ctrl+A',
-  ctrlC: 'Ctrl+C',
-  ctrlD: 'Ctrl+D',
-  ctrlE: 'Ctrl+E',
-  ctrlK: 'Ctrl+K',
-  ctrlL: 'Ctrl+L',
-  ctrlR: 'Ctrl+R',
-  ctrlU: 'Ctrl+U',
-  ctrlW: 'Ctrl+W',
-  ctrlZ: 'Ctrl+Z',
-  enter: 'Enter',
-  tab: 'Tab',
-  escape: 'Escape',
-  arrowUp: 'Arrow Up',
-  arrowDown: 'Arrow Down',
-  arrowLeft: 'Arrow Left',
-  arrowRight: 'Arrow Right',
-  closeSession: 'Close Session',
-  sendText: 'Send Command + Enter',
-  typeText: 'Type Text Only'
-});
-
-const TERMINAL_ACTION_KEY_SEQUENCES = Object.freeze({
-  ctrlA: '\x01',
-  ctrlC: '\x03',
-  ctrlD: '\x04',
-  ctrlE: '\x05',
-  ctrlK: '\x0b',
-  ctrlL: '\x0c',
-  ctrlR: '\x12',
-  ctrlU: '\x15',
-  ctrlW: '\x17',
-  ctrlZ: '\x1a',
-  enter: '\r',
-  tab: '\t',
-  escape: '\x1b',
-  arrowUp: '\x1b[A',
-  arrowDown: '\x1b[B',
-  arrowRight: '\x1b[C',
-  arrowLeft: '\x1b[D'
-});
-
-function terminalActionKindLabel(kind) {
-  return TERMINAL_ACTION_KIND_LABELS[String(kind || '')] || String(kind || 'Terminal Action');
-}
-
-function terminalActionHexToRgba(hex, alpha = 0.12) {
-  const match = String(hex || '').trim().match(/^#([0-9a-f]{6})$/i);
-
-  if (!match) {
-    return '';
-  }
-
-  const value = match[1];
-  const r = Number.parseInt(value.slice(0, 2), 16);
-  const g = Number.parseInt(value.slice(2, 4), 16);
-  const b = Number.parseInt(value.slice(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function setTerminalActionIconContent(container, action) {
-  if (!container) {
-    return;
-  }
-
-  const normalized = normalizeTerminalToolbarAction(action);
-  container.innerHTML = '';
-  container.classList.toggle('terminal-action-custom-icon', normalized.icon === 'custom');
-
-  if (normalized.icon === 'custom' && normalized.customIcon) {
-    container.textContent = normalized.customIcon;
-    return;
-  }
-
-  container.innerHTML = terminalActionIconSvg(normalized.icon);
-}
+// Prompt-only terminals (including ordinary SSH shells) do not expose a
+// reliable child-process completion event. Wait for a stable shell prompt
+// instead of treating one incoming output chunk as proof of completion.
+const TERMINAL_PROCESS_COMPLETION_QUIET_MS = 900;
+// Connection setup is restricted, but command execution must not lock the toolbar.
+const TERMINAL_BUSY_ALLOWED_ACTIONS = new Set(['clear', 'copyAll', 'copySelection', 'ctrlC', 'closeSession']);
 
 function getConnectingTerminalSession(exceptTerminalId = null) {
   return Array.from(state.terminals.values()).find((session) => {
@@ -560,49 +484,13 @@ function isTerminalSessionProcessing(session) {
 
   const status = String(session.status || '').toLowerCase();
 
-  return ['connecting', 'reconnecting'].includes(status)
-    || session.processBusy === true
-    || session.toolbarActionBusy === true;
+  // A running command is not an unavailable terminal. Only connection setup
+  // prevents sending new input; Ctrl+C and local view actions remain available.
+  return ['connecting', 'reconnecting'].includes(status);
 }
 
 function terminalActionAllowedWhileProcessing(action) {
   return TERMINAL_BUSY_ALLOWED_ACTIONS.has(String(action || ''));
-}
-
-function getTerminalSafetySettings() {
-  return {
-    lockActionsWhileCommandRunning: state.settings?.ui?.terminalSafety?.lockActionsWhileCommandRunning !== false
-  };
-}
-
-function isTerminalActionBlockedWhileProcessing(session, action) {
-  if (!session || session.closed) {
-    return false;
-  }
-
-  const normalizedAction = String(action || '');
-  const status = String(session.status || '').toLowerCase();
-
-  if (['connecting', 'reconnecting'].includes(status) || session.toolbarActionBusy === true) {
-    return !terminalActionAllowedWhileProcessing(normalizedAction);
-  }
-
-  if (session.processBusy !== true) {
-    return false;
-  }
-
-  if (!getTerminalSafetySettings().lockActionsWhileCommandRunning) {
-    return false;
-  }
-
-  return !TERMINAL_PROCESS_SAFE_ACTIONS.has(normalizedAction);
-}
-
-function isTerminalActionInteractionBlocked(session, action) {
-  const normalizedAction = String(action || '');
-
-  return isTerminalActionBlockedWhileProcessing(session, normalizedAction)
-    || (state.terminalActionInFlight && !terminalActionAllowedWhileProcessing(normalizedAction));
 }
 
 function getTerminalProcessingLabel(session) {
@@ -632,19 +520,19 @@ function showConnectionAttemptBusyNotification(session, requestedServer = null) 
 
   showToast(`Connection in progress — ${activeName} is still connecting.${suffix}`, 6500, 'warning');
 
-  if (session?.terminalId) {
-    activateTerminalAndFocus(session.terminalId);
-  }
+  // Never steal focus from the tab the user is browsing.
 }
 
 function updateTerminalInteractionState() {
   const activeSession = state.terminals.get(state.activeTerminalId) || null;
+  const activeProcessing = isTerminalSessionProcessing(activeSession)
+    || state.terminalActionInFlightSessionIds.has(activeSession?.terminalId);
   const connectingSession = getConnectingTerminalSession();
   const connectionOperationBusy = Boolean(connectingSession || state.connectionHealthCheckInFlight || state.connectionAttemptInFlight);
 
   $$('.terminal-action-button').forEach((button) => {
     const action = button.dataset.terminalAction || '';
-    const disabled = isTerminalActionInteractionBlocked(activeSession, action);
+    const disabled = activeProcessing && !terminalActionAllowedWhileProcessing(action);
     button.disabled = disabled;
     button.classList.toggle('is-busy', disabled);
     button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
@@ -675,18 +563,17 @@ function updateTerminalInteractionState() {
       return;
     }
 
-    const disabled = isTerminalActionInteractionBlocked(activeSession, action);
+    const disabled = activeProcessing && !terminalActionAllowedWhileProcessing(action);
     button.disabled = disabled;
     button.classList.toggle('is-busy', disabled);
     button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
   });
 
   $$('.command-run-button').forEach((button) => {
-    const disabled = isTerminalActionInteractionBlocked(activeSession, 'sendText');
-    button.disabled = disabled;
-    button.classList.toggle('is-busy', disabled);
-    button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-    button.title = disabled ? 'Wait for the active terminal process to finish.' : 'Run command';
+    button.disabled = Boolean(activeProcessing);
+    button.classList.toggle('is-busy', Boolean(activeProcessing));
+    button.setAttribute('aria-disabled', activeProcessing ? 'true' : 'false');
+    button.title = activeProcessing ? 'Wait for the active terminal process to finish.' : 'Run command';
   });
 
   $$('.connect-card-button').forEach((button) => {
@@ -716,34 +603,70 @@ function updateTerminalInteractionState() {
           : 'A connection request is being prepared.'
       : '';
   });
+  syncV7CommandComposer();
+}
+
+function isTerminalTabWorking(session) {
+  return Boolean(session && !session.closed && (
+    ['connecting', 'reconnecting'].includes(String(session.status || '').toLowerCase())
+    || session.processBusy === true
+  ));
+}
+
+function updateTerminalTabWorkingIndicator(session) {
+  if (!session?.terminalId) return;
+  // Only update this session's existing DOM node, avoiding a tab-strip rebuild
+  // whenever terminal output or command state changes.
+  const tab = Array.from($('#terminal-tabs')?.children || [])
+    .find((node) => node.dataset?.terminalId === session.terminalId);
+  if (!tab) return;
+  const working = isTerminalTabWorking(session);
+  tab.classList.toggle('is-working', working);
+  tab.setAttribute('aria-busy', working ? 'true' : 'false');
+  const status = ['connecting', 'reconnecting'].includes(String(session.status || '').toLowerCase())
+    ? 'Connecting'
+    : working ? 'Command running' : session.closed ? 'Disconnected' : 'Ready';
+  tab.title = `${session.server?.type === 'local' ? 'Local terminal' : 'SSH'}: ${getTerminalTabTitle(session)} — ${status} — right-click for tab actions`;
+  const indicator = tab.querySelector('.terminal-tab-work-indicator');
+  if (indicator) indicator.setAttribute('aria-label', status);
+  const sessionRow = Array.from($('#v7-session-list')?.children || [])
+    .find((node) => node.dataset?.terminalId === session.terminalId);
+  if (sessionRow) {
+    sessionRow.classList.toggle('is-working', working);
+    sessionRow.setAttribute('aria-busy', working ? 'true' : 'false');
+    const subtitle = sessionRow.querySelector('.v7-session-name small');
+    if (subtitle) subtitle.textContent = getV7SessionStatus(session);
+  }
+}
+
+function notifyTerminalProcessCompleted(session, source) {
+  // A command must have been submitted in this live tab. Never send the
+  // command text, remote host, terminal output or credentials to Windows.
+  if (!session || session.closed || !session.processCompletionSequence) return;
+  if (typeof window.advanceTerminal?.notifyTerminalActivityComplete !== 'function') return;
+  window.advanceTerminal.notifyTerminalActivityComplete({
+    terminalId: session.terminalId,
+    runId: session.processCompletionSequence,
+    source
+  });
 }
 
 function setTerminalProcessBusy(session, busy, label = '') {
-  if (!session) {
-    return;
-  }
+  if (!session) return;
 
+  // No arbitrary age-based expiry: silent builds, SSH jobs and interactive
+  // readers can legitimately stay busy for longer than an hour.
   clearTimeout(session.processBusyTimer);
   session.processBusyTimer = null;
+  if (busy && !session.processBusy) {
+    session.processCompletionSequence = (session.processCompletionSequence || 0) + 1;
+  }
   session.processBusy = Boolean(busy);
   session.processLabel = busy ? String(label || 'A terminal command is still running').slice(0, 180) : '';
   session.processBusySince = busy ? Date.now() : null;
-
-  if (busy) {
-    session.processBusyTimer = setTimeout(() => {
-      if (!state.terminals.has(session.terminalId) || session.closed) {
-        return;
-      }
-
-      session.processBusy = false;
-      session.processLabel = '';
-      session.processBusySince = null;
-      session.processBusyTimer = null;
-      updateTerminalInteractionState();
-      showToast('Terminal action lock was released after the safety timeout.', 5000, 'warning');
-    }, TERMINAL_PROCESS_SAFETY_TIMEOUT_MS);
-  }
-
+  session.processActivityGeneration = (session.processActivityGeneration || 0) + 1;
+  session.processOutputTail = '';
+  updateTerminalTabWorkingIndicator(session);
   updateTerminalInteractionState();
 }
 
@@ -755,9 +678,7 @@ function terminalOutputLooksReady(data) {
     .filter((line) => line.trim())
     .pop();
 
-  if (!cleaned || cleaned.length > 260) {
-    return false;
-  }
+  if (!cleaned || cleaned.length > 260) return false;
 
   return /^(?:PS\s+)?[A-Za-z]:[\\/].*>\s*$/.test(cleaned)
     || /^(?:\([^)]+\)\s*)?(?:[\w.-]+@[\w.-]+(?::[^$#\r\n]*)?|[~/.][^$#\r\n]*)[$#%❯➜]\s*$/.test(cleaned)
@@ -766,10 +687,60 @@ function terminalOutputLooksReady(data) {
     || /^[A-Za-z0-9_.-]{1,80}[$#%❯➜]\s*$/.test(cleaned);
 }
 
+// Read the terminal's current cursor line as a fallback for PowerShell.
+// PTY output can split ANSI/control sequences across IPC events; the raw
+// output tail may not match the prompt even when xterm shows it correctly.
+// Only use this for local PowerShell, and only after output has been quiet.
+function terminalVisiblePowerShellPromptLooksReady(session) {
+  if (session?.server?.type !== 'local') return false;
+  const buffer = session.term?.buffer?.active;
+  if (!buffer || !Number.isInteger(buffer.baseY) || !Number.isInteger(buffer.cursorY)) return false;
+  const line = buffer.getLine?.(buffer.baseY + buffer.cursorY);
+  const visibleLine = line?.translateToString?.(true);
+  if (typeof visibleLine !== 'string') return false;
+  const cleaned = visibleLine.trimEnd();
+  // A cursor on a prompt (rather than on a printed log line) is required.
+  if (!/^PS\s+[A-Za-z]:[\\/].*>$/.test(cleaned)) return false;
+  return Number.isInteger(buffer.cursorX) && buffer.cursorX >= cleaned.length;
+}
+
+function terminalOutputHasCompletionMarker(data) {
+  // Optional shell-integration signal (OSC 133/633 "command finished").
+  // The marker must be terminated, including if split across IPC chunks.
+  return /\x1b\](?:133|633);D(?:;[^\x07\x1b]*)?(?:\x07|\x1b\\)/.test(data);
+}
+
 function maybeReleaseTerminalProcessBusy(session, data) {
-  if (session?.processBusy && terminalOutputLooksReady(data)) {
+  if (!session?.processBusy || !data || session.closed) return;
+
+  // Every incoming output chunk invalidates the prior completion candidate.
+  // In particular, a line of streamed command output resembling a prompt
+  // must not immediately stop the loading indicator.
+  clearTimeout(session.processBusyTimer);
+  session.processBusyTimer = null;
+  session.processOutputTail = `${session.processOutputTail || ''}${String(data)}`.slice(-1536);
+
+  if (terminalOutputHasCompletionMarker(session.processOutputTail)) {
     setTerminalProcessBusy(session, false);
+    notifyTerminalProcessCompleted(session, 'shell-marker');
+    return;
   }
+
+  // Even if the raw tail is inconclusive, give the rendered PowerShell prompt
+  // a chance to settle before deciding. Never equate silence with completion.
+  const observedTail = session.processOutputTail;
+  const observedGeneration = session.processActivityGeneration;
+  session.processBusyTimer = setTimeout(() => {
+    session.processBusyTimer = null;
+    if (!session.closed && state.terminals.get(session.terminalId) === session
+        && session.processBusy && session.processActivityGeneration === observedGeneration
+        && session.processOutputTail === observedTail
+        && (terminalOutputLooksReady(observedTail)
+          || terminalVisiblePowerShellPromptLooksReady(session))) {
+      setTerminalProcessBusy(session, false);
+      notifyTerminalProcessCompleted(session, 'prompt-quiet');
+    }
+  }, TERMINAL_PROCESS_COMPLETION_QUIET_MS);
 }
 
 function guardTerminalAction(session, actionName, actionKind = '') {
@@ -777,7 +748,7 @@ function guardTerminalAction(session, actionName, actionKind = '') {
     return false;
   }
 
-  if (isTerminalActionBlockedWhileProcessing(session, actionKind)) {
+  if (isTerminalSessionProcessing(session) && !terminalActionAllowedWhileProcessing(actionKind)) {
     showToast(`${actionName} is unavailable — ${getTerminalProcessingLabel(session)}.`, 5000, 'warning');
     focusTerminal(session);
     return false;
@@ -1246,15 +1217,28 @@ function getCompleteCommandLinesFromTerminalData(session, data) {
 }
 
 function showSshPathLockBlocked(session, reason) {
-  const message = reason || 'SSH folder lock blocked this command.';
+  // This notification belongs next to the rejected command, not over the
+  // application chrome. Never type these bytes into the remote shell.
+  const message = String(reason || 'SSH folder lock blocked this command.')
+    .replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+  const now = Date.now();
+  const previousNotice = session?.sshLockLastInlineNotice;
+  const repeated = previousNotice?.message === message
+    && now - previousNotice.at >= 0
+    && now - previousNotice.at < 3000;
 
-  if (session?.term) {
-    session.term.write(`\r\n[Advance Terminal] ${message}\r\n`);
+  if (session?.term && !repeated) {
+    // ANSI truecolor affects this local xterm note only; reset after both spans.
+    const prefix = '\x1b[38;2;210;162;79m[Advance Terminal]\x1b[0m';
+    const body = `\x1b[38;2;219;215;204m${message}\x1b[0m`;
+    session.term.write(`\r\n${prefix} ${body}\r\n`);
+    session.sshLockLastInlineNotice = { message, at: now };
   }
 
+  // Preserve one audit entry for *every* rejected attempt, even if the
+  // duplicate visual notice is suppressed for three seconds.
   appendLiveConsole(`SSH folder lock: ${message}`, 'warning');
   recordSessionEvent(session, message, 'warning');
-  showToast(message, 6000, 'warning');
   focusTerminal(session);
 }
 
@@ -1503,55 +1487,13 @@ function hasSshStartupFailure(buffer) {
     .test(cleanTerminalStartupBuffer(buffer));
 }
 
-
-function quoteWorkspacePosixPath(value) {
-  return `'${String(value || '').replace(/'/g, `'\\''`)}'`;
-}
-
-function restoreWorkspaceRemoteLocation(session) {
-  const target = normalizeTerminalLocation(session?.workspaceRestoreWorkingDirectory);
-  session.workspaceRestoreWorkingDirectory = '';
-
-  if (!target || !session || session.closed || session.server?.type !== 'remote') {
-    return false;
-  }
-
-  const current = normalizeTerminalLocation(session.currentLocation);
-  if (current && current === target) {
-    return true;
-  }
-
-  const payload = `cd ${quoteWorkspacePosixPath(target)}\r`;
-  const lockResult = inspectSshLockedTerminalData(session, payload);
-
-  if (lockResult.blocked) {
-    recordSessionEvent(session, `Workspace folder restore skipped: ${lockResult.reason}`, 'warning');
-    appendActivityFeedEvent(
-      `${session.server?.name || 'SSH'} workspace folder restore skipped: ${lockResult.reason}`,
-      'warning',
-      { dedupeMs: 1500 }
-    );
-    return false;
-  }
-
-  applySshLockedLocationResult(session, lockResult);
-  session.sshTypedCommandBuffer = lockResult.trailing || '';
-
-  window.advanceTerminal.writeTerminal({
-    terminalId: session.terminalId,
-    data: payload
-  });
-
-  recordSessionEvent(session, `Workspace folder restored: ${target}`, 'system');
-  return true;
-}
-
 function finishCleanSshStartup(session, prompt) {
   session.cleanSshStartupActive = false;
   session.cleanSshStartupBuffer = '';
   session.cleanSshStartupStartedAt = null;
   hideTerminalConnectingOverlay(session);
   session.status = 'connected';
+  updateTerminalTabWorkingIndicator(session);
   updateConnectionHealthFromSession(session.server, 'ready', 'SSH prompt is ready.');
   recordSessionEvent(session, `Connected: ${session.server?.name || session.server?.host || session.terminalId}`, 'success');
 
@@ -1573,8 +1515,7 @@ function finishCleanSshStartup(session, prompt) {
     // Ignore terminal cleanup failure if the tab was closed during connect.
   }
 
-  restoreWorkspaceRemoteLocation(session);
-  focusTerminal(session);
+  if (state.activeTerminalId === session.terminalId && state.activeView === 'terminal') focusTerminal(session);
 }
 
 function handleCleanSshStartupData(session, data) {
@@ -1661,36 +1602,8 @@ function renderLiveProcessBox() {
   box.dataset.level = latest.level || 'info';
 }
 
-function appendLiveConsole(message, level = 'info') {
-  const cleaned = stripTerminalControlText(message)
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .join('\n')
-    .trimEnd();
-
-  if (!cleaned.trim()) {
-    return;
-  }
-
-  const entry = {
-    time: liveConsoleTime(),
-    level,
-    message: trimLiveConsoleMessage(cleaned)
-  };
-
-  state.liveConsoleLogs.push(entry);
-  state.liveProcessLogs.push(entry);
-
-  while (state.liveConsoleLogs.length > LIVE_CONSOLE_MAX_ENTRIES) {
-    state.liveConsoleLogs.shift();
-  }
-
-  while (state.liveProcessLogs.length > LIVE_PROCESS_MAX_ENTRIES) {
-    state.liveProcessLogs.shift();
-  }
-
-  renderLiveProcessBox();
-  scheduleLiveConsoleRender();
+function appendLiveConsole(_message, _level = 'info') {
+  // Activity Feed retired. No in-memory feed entries or redraw work.
 }
 
 function renderLiveConsole() {
@@ -1802,11 +1715,6 @@ function setLiveConsoleSize(size) {
     return;
   }
 
-  if (state.liveConsoleOpen) {
-    state.liveConsoleDismissed = false;
-    consoleBox.classList.remove('is-dismissed');
-  }
-
   consoleBox.classList.remove('is-large');
   consoleBox.classList.toggle('is-medium', state.liveConsoleOpen);
   consoleBox.classList.toggle('is-open', state.liveConsoleOpen);
@@ -1830,16 +1738,6 @@ function setLiveConsoleSize(size) {
 
 function setLiveConsoleOpen(open) {
   setLiveConsoleSize(open ? 'medium' : 'closed');
-}
-
-function dismissLiveConsole() {
-  setLiveConsoleSize('closed');
-  state.liveConsoleDismissed = true;
-
-  const consoleBox = $('#live-console');
-  consoleBox?.classList.add('is-dismissed');
-
-  showToast('Activity Feed hidden. Use View → Activity Feed to reopen it.', 4200, 'success');
 }
 
 function toggleLiveConsole() {
@@ -1984,16 +1882,8 @@ function isRoutineSshStartupActivityText(text) {
   ));
 }
 
-function maybeQueueLiveConsoleTerminalOutput(payload, session = null) {
-  if (getActivityFeedTerminalOutputMode() === 'off') {
-    return;
-  }
-
-  if (session?.cleanSshStartupActive === true) {
-    return;
-  }
-
-  queueLiveConsoleTerminalOutput(payload);
+function maybeQueueLiveConsoleTerminalOutput(_payload, _session = null) {
+  // Terminal output remains in xterm; Activity Feed collection is disabled.
 }
 
 function flushLiveConsoleTerminalOutput(terminalId) {
@@ -2668,22 +2558,10 @@ async function saveSettingsNow({ toastMessage = '', refresh = true } = {}) {
       renderServerList();
       renderCommandList();
       renderTerminalToolbarActions();
-      renderTerminalProfileQuickMenu();
-      populateLocalProfileDropdown();
       renderAuditLog();
-
-      if (state.activeSettingsTab === 'terminal-profiles') {
-        renderTerminalProfilesSettings();
-      }
 
       if (state.activeSettingsTab === 'terminal-actions') {
         renderTerminalActionList();
-      }
-
-      renderWorkspaceQuickMenu();
-
-      if (state.activeSettingsTab === 'workspaces') {
-        renderWorkspaceSettings();
       }
     }
 
@@ -4537,7 +4415,35 @@ function syncWorkspaceForView(view) {
   }
 }
 
+
+// The V7 push flyout displays every Settings section in one scrollable list.
+// Each section has existing on-demand initialization; load its read-only data
+// only when Settings is explicitly opened (never from terminal input handlers).
+function populateUnifiedSettingsFlyout() {
+  if (window.v7PushFlyout?.active !== 'settings') return;
+  updatePasteProtectionControls();
+  void renderSettingsRestorePoints();
+  renderTerminalActionsSettings();
+  void refreshAiStatus({ silent: true });
+  void refreshSshKeys({ silent: true });
+  void refreshUpdateStatus();
+  const scroller = $('#settings-view .settings-content');
+  if (scroller) scroller.scrollTop = 0;
+}
+
 function setActiveView(view, toolbarPanel = null) {
+  // The optional V7 push panel keeps the live terminal mounted while displaying
+  // the existing Settings, Report, Help, and Appearance views beside it.
+  if (window.v7PushFlyout && window.v7PushFlyout.openPage(view)) {
+    if (view === 'settings') {
+      renderSettings();
+      populateUnifiedSettingsFlyout();
+    }
+    if (view === 'report') setReportTab(state.activeReportTab || 'options');
+    if (view === 'about') setHelpTab(state.activeHelpTab || 'about');
+    if (view === 'view') updateNotificationPositionControls(getNotificationPosition());
+    return;
+  }
   const previousView = state.activeView;
   state.activeView = view;
 
@@ -4599,7 +4505,6 @@ function setHelpTab(tab) {
     'restore',
     'ai',
     'reports',
-    'live-console',
     'view',
     'updates',
     'backup',
@@ -4645,7 +4550,7 @@ function setSettingsTab(tab) {
     return;
   }
 
-  const allowedTabs = new Set(['safety', 'restore', 'workspaces', 'terminal-profiles', 'terminal-actions', 'ai', 'keys', 'updates']);
+  const allowedTabs = new Set(['safety', 'restore', 'terminal-actions', 'ai', 'keys', 'updates']);
   const normalizedTab = allowedTabs.has(tab) ? tab : 'safety';
 
   state.activeSettingsTab = normalizedTab;
@@ -4662,14 +4567,6 @@ function setSettingsTab(tab) {
 
   if (normalizedTab === 'restore') {
     renderSettingsRestorePoints();
-  }
-
-  if (normalizedTab === 'workspaces') {
-    renderWorkspaceSettings();
-  }
-
-  if (normalizedTab === 'terminal-profiles') {
-    renderTerminalProfilesSettings();
   }
 
   if (normalizedTab === 'terminal-actions') {
@@ -4746,12 +4643,6 @@ function navigateFromHelpLink(button) {
     return;
   }
 
-  if (action === 'toggle-activity-feed') {
-    setActiveView('view', 'view');
-    toggleLiveConsole();
-    return;
-  }
-
   if (action === 'repair-settings') {
     setActiveView('settings', 'settings');
     setSettingsTab('restore');
@@ -4773,7 +4664,15 @@ function navigateFromHelpLink(button) {
 
   if (target === 'settings') {
     setActiveView('settings', 'settings');
-    setSettingsTab(button.dataset.settingsTab || 'safety');
+    const tab = button.dataset.settingsTab || 'safety';
+    setSettingsTab(tab);
+    if (window.v7PushFlyout?.active === 'settings') {
+      const scroller = $('#settings-view .settings-content');
+      const section = $(`#settings-tab-${tab}`);
+      if (scroller && section) {
+        scroller.scrollTop += section.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }
+    }
     return;
   }
 
@@ -4848,346 +4747,40 @@ function getSelectedTerminalAction() {
   return getTerminalToolbarActions().find((item) => item.id === state.editingTerminalActionId) || null;
 }
 
-function normalizeTerminalToolbarShortcut(value) {
-  const raw = String(value || '').trim();
+// Transient visual feedback only. Never persist it to settings or delay terminal input.
+const terminalActionFeedback = new Map();
+const TERMINAL_ACTION_FEEDBACK_MS = 1700;
 
-  if (!raw) {
-    return '';
+function confirmTerminalToolbarAction(actionId) {
+  const key = String(actionId || '');
+  if (!key) {
+    return;
   }
 
-  const aliases = new Map([
-    ['control', 'Ctrl'],
-    ['ctrl', 'Ctrl'],
-    ['alt', 'Alt'],
-    ['option', 'Alt'],
-    ['shift', 'Shift'],
-    ['meta', 'Meta'],
-    ['cmd', 'Meta'],
-    ['command', 'Meta'],
-    ['esc', 'Escape'],
-    ['escape', 'Escape'],
-    ['space', 'Space'],
-    ['spacebar', 'Space'],
-    ['return', 'Enter'],
-    ['enter', 'Enter'],
-    ['del', 'Delete'],
-    ['delete', 'Delete'],
-    ['backspace', 'Backspace'],
-    ['tab', 'Tab'],
-    ['up', 'ArrowUp'],
-    ['down', 'ArrowDown'],
-    ['left', 'ArrowLeft'],
-    ['right', 'ArrowRight']
-  ]);
-  const modifiers = new Set();
-  let key = '';
+  const previous = terminalActionFeedback.get(key);
+  if (previous) {
+    clearTimeout(previous.timer);
+  }
 
-  raw.split('+').map((part) => part.trim()).filter(Boolean).forEach((part) => {
-    const lower = part.toLowerCase();
-    const alias = aliases.get(lower);
+  const entry = { timer: null };
+  terminalActionFeedback.set(key, entry);
 
-    if (['Ctrl', 'Alt', 'Shift', 'Meta'].includes(alias)) {
-      modifiers.add(alias);
+  const apply = (confirmed) => {
+    $$('.dynamic-terminal-action').forEach((button) => {
+      if (button.dataset.terminalActionId === key) {
+        button.classList.toggle('is-action-confirmed', confirmed);
+      }
+    });
+  };
+
+  apply(true);
+  entry.timer = setTimeout(() => {
+    if (terminalActionFeedback.get(key) !== entry) {
       return;
     }
-
-    if (!key) {
-      if (alias) {
-        key = alias;
-      } else if (/^f(?:[1-9]|1[0-2])$/i.test(part)) {
-        key = part.toUpperCase();
-      } else if (part.length === 1) {
-        key = part.toUpperCase();
-      } else {
-        key = part.charAt(0).toUpperCase() + part.slice(1);
-      }
-    }
-  });
-
-  if (!key || !modifiers.size) {
-    return '';
-  }
-
-  return ['Ctrl', 'Alt', 'Shift', 'Meta']
-    .filter((modifier) => modifiers.has(modifier))
-    .concat(key)
-    .join('+');
-}
-
-function terminalToolbarShortcutFromEvent(event) {
-  if (!event || ['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) {
-    return '';
-  }
-
-  const parts = [];
-
-  if (event.ctrlKey) {
-    parts.push('Ctrl');
-  }
-
-  if (event.altKey) {
-    parts.push('Alt');
-  }
-
-  if (event.shiftKey) {
-    parts.push('Shift');
-  }
-
-  if (event.metaKey) {
-    parts.push('Meta');
-  }
-
-  if (!parts.length) {
-    return '';
-  }
-
-  let key = String(event.key || '');
-
-  if (key === ' ') {
-    key = 'Space';
-  } else if (key.length === 1) {
-    key = key.toUpperCase();
-  } else {
-    const keyAliases = {
-      Esc: 'Escape',
-      Up: 'ArrowUp',
-      Down: 'ArrowDown',
-      Left: 'ArrowLeft',
-      Right: 'ArrowRight'
-    };
-    key = keyAliases[key] || key;
-  }
-
-  return parts.concat(key).join('+');
-}
-
-function getReservedTerminalToolbarShortcuts() {
-  return new Set([
-    'Ctrl+Shift+P',
-    'Ctrl+C',
-    'Ctrl+V',
-    'Ctrl+Shift+C',
-    'Ctrl+Shift+V',
-    'Ctrl+F'
-  ]);
-}
-
-function getTerminalToolbarShortcutConflict(shortcut, exceptActionId = '') {
-  const normalized = normalizeTerminalToolbarShortcut(shortcut);
-
-  if (!normalized) {
-    return null;
-  }
-
-  if (getReservedTerminalToolbarShortcuts().has(normalized)) {
-    return { reserved: true, label: normalized };
-  }
-
-  const duplicate = getTerminalToolbarActions().find((item) => (
-    item.itemType !== 'separator'
-    && item.id !== exceptActionId
-    && normalizeTerminalToolbarShortcut(item.shortcut) === normalized
-  ));
-
-  return duplicate ? { reserved: false, action: duplicate, label: normalized } : null;
-}
-
-function getActiveTerminalToolbarProfileId(session = state.terminals.get(state.activeTerminalId) || null) {
-  if (!session || session.closed) {
-    return '';
-  }
-
-  const server = session.server || {};
-  const explicitProfileId = String(server.profileId || '').trim();
-
-  if (explicitProfileId) {
-    return explicitProfileId;
-  }
-
-  if (String(server.id || '').startsWith('terminal-profile:')) {
-    return String(server.id).slice('terminal-profile:'.length);
-  }
-
-  if (server.type === 'local') {
-    const savedServer = state.settings?.servers?.find((candidate) => candidate.id === server.id);
-    return String(savedServer?.profileId || '').trim();
-  }
-
-  return '';
-}
-
-function terminalToolbarItemMatchesContext(action, session = state.terminals.get(state.activeTerminalId) || null) {
-  const normalized = normalizeTerminalToolbarAction(action);
-  const visibility = normalized.visibility || 'all';
-
-  if (visibility === 'all') {
-    return true;
-  }
-
-  if (visibility === 'admin') {
-    return state.appInfo?.isElevated === true;
-  }
-
-  if (!session || session.closed) {
-    return false;
-  }
-
-  if (visibility === 'ssh') {
-    return session.server?.type === 'remote';
-  }
-
-  if (visibility === 'local') {
-    return session.server?.type !== 'remote';
-  }
-
-  if (visibility === 'profile') {
-    return Boolean(normalized.profileId)
-      && Boolean(getTerminalProfileById(normalized.profileId))
-      && normalized.profileId === getActiveTerminalToolbarProfileId(session);
-  }
-
-  return true;
-}
-
-function applyTerminalActionButtonColor(button, action) {
-  if (!button || !action?.color) {
-    return;
-  }
-
-  button.classList.add('has-custom-color');
-  button.style.setProperty('--tool-accent', action.color);
-  button.style.setProperty('--tool-tint', terminalActionHexToRgba(action.color, 0.14));
-  button.style.setProperty('--tool-border-accent', terminalActionHexToRgba(action.color, 0.42));
-}
-
-function createTerminalToolbarActionButton(actionValue, { dropdownItem = false } = {}) {
-  const action = normalizeTerminalToolbarAction(actionValue);
-  const button = document.createElement('button');
-  const icon = document.createElement('span');
-  const label = document.createElement('span');
-  const shortcut = normalizeTerminalToolbarShortcut(action.shortcut);
-
-  button.className = dropdownItem
-    ? `terminal-toolbar-dropdown-item terminal-action-button dynamic-terminal-action terminal-action-kind-${action.action}`
-    : `tool-button terminal-action-button dynamic-terminal-action terminal-action-kind-${action.action}`;
-  button.type = 'button';
-  button.title = ['sendText', 'typeText'].includes(action.action)
-    ? `${terminalActionKindLabel(action.action)}: ${action.text || action.name}`
-    : action.name;
-
-  if (shortcut) {
-    button.title += ` · ${shortcut}`;
-  }
-
-  button.dataset.terminalAction = action.action;
-  button.dataset.terminalActionId = action.id;
-  button.dataset.defaultTitle = button.title;
-
-  icon.className = dropdownItem ? 'terminal-toolbar-dropdown-item-icon' : 'tool-icon';
-  setTerminalActionIconContent(icon, action);
-  label.className = dropdownItem ? 'terminal-toolbar-dropdown-item-label' : '';
-  label.textContent = action.name;
-  button.append(icon, label);
-
-  if (dropdownItem && shortcut) {
-    const hint = document.createElement('kbd');
-    hint.textContent = shortcut;
-    button.appendChild(hint);
-  }
-
-  applyTerminalActionButtonColor(button, action);
-
-  button.addEventListener('click', () => {
-    closeTerminalToolbarDropdown();
-    executeTerminalToolbarAction(action).catch((error) => {
-      showToast(`${action.name} failed: ${error.message}`, 7000);
-    });
-  });
-
-  return button;
-}
-
-function closeTerminalToolbarDropdown() {
-  const menu = state.terminalToolbarDropdownMenu;
-
-  if (menu?.remove) {
-    menu.remove();
-  }
-
-  state.terminalToolbarDropdownMenu = null;
-  $$('.terminal-toolbar-dropdown-toggle.active').forEach((button) => {
-    button.classList.remove('active');
-    button.setAttribute('aria-expanded', 'false');
-  });
-}
-
-function openTerminalToolbarDropdown(toggleButton, label, actionValues) {
-  if (!toggleButton || !Array.isArray(actionValues) || !actionValues.length) {
-    return;
-  }
-
-  const wasOpen = toggleButton.classList.contains('active');
-  closeTerminalToolbarDropdown();
-
-  if (wasOpen) {
-    return;
-  }
-
-  const menu = document.createElement('div');
-  const heading = document.createElement('div');
-
-  menu.className = 'terminal-toolbar-dropdown-menu';
-  menu.setAttribute('role', 'menu');
-  heading.className = 'terminal-toolbar-dropdown-heading';
-  heading.textContent = label;
-  menu.appendChild(heading);
-
-  actionValues.forEach((action) => {
-    menu.appendChild(createTerminalToolbarActionButton(action, { dropdownItem: true }));
-  });
-
-  document.body.appendChild(menu);
-  state.terminalToolbarDropdownMenu = menu;
-  toggleButton.classList.add('active');
-  toggleButton.setAttribute('aria-expanded', 'true');
-
-  const rect = toggleButton.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuRect.width - 8));
-  const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - menuRect.height - 8));
-
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  updateTerminalInteractionState();
-  menu.querySelector('button')?.focus();
-}
-
-function createTerminalToolbarDropdown(label, actions) {
-  const wrapper = document.createElement('div');
-  const toggle = document.createElement('button');
-  const icon = document.createElement('span');
-  const text = document.createElement('span');
-  const first = normalizeTerminalToolbarAction(actions[0]);
-
-  wrapper.className = 'terminal-toolbar-dropdown';
-  toggle.type = 'button';
-  toggle.className = 'tool-button terminal-toolbar-dropdown-toggle';
-  toggle.title = `${label} menu`;
-  toggle.setAttribute('aria-haspopup', 'menu');
-  toggle.setAttribute('aria-expanded', 'false');
-
-  icon.className = 'tool-icon';
-  setTerminalActionIconContent(icon, first);
-  text.textContent = `${label} ▾`;
-  toggle.append(icon, text);
-  applyTerminalActionButtonColor(toggle, first);
-
-  toggle.addEventListener('click', () => {
-    openTerminalToolbarDropdown(toggle, label, actions);
-  });
-
-  wrapper.appendChild(toggle);
-  return wrapper;
+    terminalActionFeedback.delete(key);
+    apply(false);
+  }, TERMINAL_ACTION_FEEDBACK_MS);
 }
 
 function renderTerminalToolbarActions() {
@@ -5197,213 +4790,110 @@ function renderTerminalToolbarActions() {
     return;
   }
 
-  closeTerminalToolbarDropdown();
-
-  const activeSession = state.terminals.get(state.activeTerminalId) || null;
-  const actions = getTerminalToolbarActions()
-    .filter((action) => action.enabled !== false)
-    .filter((action) => terminalToolbarItemMatchesContext(action, activeSession));
-
+  const actions = getTerminalToolbarActions().filter((action) => action.enabled !== false);
   container.innerHTML = '';
 
   if (!actions.length) {
     const empty = document.createElement('div');
     empty.className = 'terminal-toolbar-empty';
-    empty.textContent = 'No toolbar items match this terminal. Open Settings → Terminal Actions.';
+    empty.textContent = 'No terminal toolbar actions enabled. Open Settings → Terminal Actions.';
     container.appendChild(empty);
     return;
   }
 
-  for (let index = 0; index < actions.length; index += 1) {
-    const action = normalizeTerminalToolbarAction(actions[index]);
-
-    if (action.itemType === 'separator') {
-      const separator = document.createElement('span');
-      separator.className = 'toolbar-separator dynamic-terminal-separator';
-      separator.setAttribute('aria-hidden', 'true');
-      container.appendChild(separator);
-      continue;
+  actions.forEach((action) => {
+    const button = document.createElement('button');
+    button.className = `tool-button terminal-action-button dynamic-terminal-action terminal-action-kind-${action.action}`;
+    button.type = 'button';
+    button.title = action.action === 'sendText'
+      ? `Send: ${action.text || action.name}`
+      : action.name;
+    button.dataset.terminalAction = action.action;
+    button.dataset.terminalActionId = action.id;
+    button.dataset.defaultTitle = button.title;
+    if (terminalActionFeedback.has(action.id)) {
+      button.classList.add('is-action-confirmed');
     }
+    button.innerHTML = `
+      <span class="tool-icon">${terminalActionIconSvg(action.icon)}</span>
+      <span></span>
+    `;
 
-    if (action.dropdown) {
-      const dropdownItems = [action];
-      let cursor = index + 1;
+    button.querySelector('span:last-child').textContent = action.name;
+    button.addEventListener('click', () => {
+      // The terminal action starts immediately; feedback never blocks the command.
+      executeTerminalToolbarAction(action)
+        .then((succeeded) => {
+          if (succeeded === true) {
+            confirmTerminalToolbarAction(action.id);
+          }
+        })
+        .catch((error) => {
+          showToast(`${action.name} failed: ${error.message}`, 7000, 'error');
+        });
+    });
 
-      while (cursor < actions.length) {
-        const next = normalizeTerminalToolbarAction(actions[cursor]);
-
-        if (next.itemType !== 'action' || next.dropdown !== action.dropdown) {
-          break;
-        }
-
-        dropdownItems.push(next);
-        cursor += 1;
-      }
-
-      container.appendChild(createTerminalToolbarDropdown(action.dropdown, dropdownItems));
-      index = cursor - 1;
-      continue;
-    }
-
-    if (action.group) {
-      const group = document.createElement('div');
-      const groupedItems = [action];
-      let cursor = index + 1;
-
-      group.className = 'terminal-toolbar-button-group';
-      group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', action.group);
-      group.title = action.group;
-
-      while (cursor < actions.length) {
-        const next = normalizeTerminalToolbarAction(actions[cursor]);
-
-        if (next.itemType !== 'action' || next.dropdown || next.group !== action.group) {
-          break;
-        }
-
-        groupedItems.push(next);
-        cursor += 1;
-      }
-
-      groupedItems.forEach((item) => {
-        group.appendChild(createTerminalToolbarActionButton(item));
-      });
-
-      container.appendChild(group);
-      index = cursor - 1;
-      continue;
-    }
-
-    container.appendChild(createTerminalToolbarActionButton(action));
-  }
+    container.appendChild(button);
+  });
 
   updateTerminalInteractionState();
 }
 
 async function executeTerminalToolbarAction(action) {
   const normalized = normalizeTerminalToolbarAction(action);
-
-  if (normalized.itemType === 'separator') {
-    return;
-  }
-
   const session = state.terminals.get(state.activeTerminalId) || null;
-
-  if (!terminalToolbarItemMatchesContext(normalized, session)) {
-    showToast('This toolbar action is not available for the active terminal.', 4000, 'warning');
-    renderTerminalToolbarActions();
-    return;
-  }
-
   const allowedWhileBusy = terminalActionAllowedWhileProcessing(normalized.action);
 
   if (!allowedWhileBusy && session && !guardTerminalAction(session, normalized.name || 'Terminal action', normalized.action)) {
-    return;
+    return false;
   }
 
-  if (!allowedWhileBusy && state.terminalActionInFlight) {
-    showToast('Please wait for the current terminal action to finish.', 4000, 'warning');
-    return;
+  if (!allowedWhileBusy && state.terminalActionInFlightSessionIds.has(session?.terminalId)) {
+    showToast('Please wait for this terminal action to finish.', 4000, 'warning');
+    return false;
   }
 
   const runAction = async () => {
     switch (normalized.action) {
       case 'clear':
-        clearActiveTerminal();
-        return;
+        return clearActiveTerminal();
       case 'copyAll':
-        await copyAllActiveTerminal();
-        return;
+        return await copyAllActiveTerminal();
       case 'copySelection':
-        await copySelectedTerminalText();
-        return;
+        return await copySelectedTerminalText();
       case 'paste':
-        await pasteClipboardToTerminal();
-        return;
+        return await pasteClipboardToTerminal();
+      case 'ctrlC':
+        return sendControlToActiveTerminal('\x03', normalized.name || 'Ctrl+C');
+      case 'ctrlL':
+        return sendControlToActiveTerminal('\x0c', normalized.name || 'Ctrl+L');
+      case 'ctrlD':
+        return sendControlToActiveTerminal('\x04', normalized.name || 'Ctrl+D');
       case 'closeSession':
-        closeTerminalSession();
-        return;
+        return closeTerminalSession(null, { force: true });
       case 'sendText':
-        await sendCommandToActiveTerminal({
-          name: normalized.name || 'Terminal Action',
-          category: 'Custom',
-          command: normalized.text || ''
-        });
-        return;
-      case 'typeText':
-        await typeTextToActiveTerminal(normalized.text || '', normalized.name || 'Type Text');
-        return;
-      default: {
-        const sequence = TERMINAL_ACTION_KEY_SEQUENCES[normalized.action];
-
-        if (sequence) {
-          sendControlToActiveTerminal(
-            sequence,
-            normalized.name || terminalActionKindLabel(normalized.action),
-            normalized.action
-          );
-          return;
-        }
-
+        return await sendCommandToActiveTerminal(normalized.text || '');
+      default:
         showToast(`Unknown terminal action: ${normalized.action}`);
-      }
+        return false;
     }
   };
 
   if (allowedWhileBusy) {
-    await runAction();
-    return;
+    return await runAction();
   }
 
-  state.terminalActionInFlight = true;
+  // An in-flight clipboard/confirmation action must not disable another tab.
+  const terminalId = session?.terminalId || null;
+  if (terminalId) state.terminalActionInFlightSessionIds.add(terminalId);
   updateTerminalInteractionState();
 
   try {
-    await runAction();
+    return await runAction();
   } finally {
-    state.terminalActionInFlight = false;
+    if (terminalId) state.terminalActionInFlightSessionIds.delete(terminalId);
     updateTerminalInteractionState();
   }
-}
-
-function handleTerminalToolbarShortcut(event) {
-  if (!event || event.defaultPrevented || state.activeView !== 'terminal') {
-    return;
-  }
-
-  if (
-    !$('#confirm-modal')?.classList.contains('hidden')
-    || !$('#safe-paste-modal')?.classList.contains('hidden')
-    || state.commandPaletteOpen
-  ) {
-    return;
-  }
-
-  const shortcut = terminalToolbarShortcutFromEvent(event);
-
-  if (!shortcut || getReservedTerminalToolbarShortcuts().has(shortcut)) {
-    return;
-  }
-
-  const session = state.terminals.get(state.activeTerminalId) || null;
-  const action = getTerminalToolbarActions().find((item) => (
-    item.itemType !== 'separator'
-    && item.enabled !== false
-    && normalizeTerminalToolbarShortcut(item.shortcut) === shortcut
-    && terminalToolbarItemMatchesContext(item, session)
-  ));
-
-  if (!action) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  executeTerminalToolbarAction(action).catch((error) => {
-    showToast(`${action.name} failed: ${error.message}`, 7000, 'error');
-  });
 }
 
 function renderTerminalActionIconPicker(selectedIcon = null) {
@@ -5413,1904 +4903,28 @@ function renderTerminalActionIconPicker(selectedIcon = null) {
     return;
   }
 
-  const selected = selectedIcon || $('#terminal-action-selected-icon')?.value || getSelectedTerminalAction()?.icon || 'terminal';
+  const selected = selectedIcon || $('#terminal-action-icon')?.value || getSelectedTerminalAction()?.icon || 'terminal';
   picker.innerHTML = '';
 
   Object.entries(TERMINAL_ACTION_ICONS).forEach(([icon, svg]) => {
     const button = document.createElement('button');
-    const preview = document.createElement('span');
-    const label = document.createElement('small');
-
     button.type = 'button';
     button.className = `terminal-action-icon-option ${icon === selected ? 'active' : ''}`;
     button.dataset.icon = icon;
     button.title = TERMINAL_ACTION_ICON_LABELS[icon] || icon;
-    preview.innerHTML = svg;
-    label.textContent = TERMINAL_ACTION_ICON_LABELS[icon] || icon;
-    button.append(preview, label);
+    button.innerHTML = `
+      <span>${svg}</span>
+      <small></small>
+    `;
+    button.querySelector('small').textContent = TERMINAL_ACTION_ICON_LABELS[icon] || icon;
 
     button.addEventListener('click', () => {
-      const hiddenIcon = $('#terminal-action-selected-icon');
-
-      if (hiddenIcon) {
-        hiddenIcon.value = icon;
-      }
-
+      $('#terminal-action-selected-icon').value = icon;
       renderTerminalActionIconPicker(icon);
-      updateTerminalActionCustomizationControls();
-
-      if (icon === 'custom') {
-        $('#terminal-action-custom-icon')?.focus();
-      }
     });
 
     picker.appendChild(button);
   });
-}
-
-
-const TERMINAL_PROFILE_KIND_LABELS = Object.freeze({
-  powershell: 'PowerShell',
-  cmd: 'Command Prompt',
-  'git-bash': 'Git Bash',
-  wsl: 'WSL',
-  custom: 'Custom'
-});
-
-function normalizeTerminalProfileClient(profile = {}) {
-  const allowedKinds = new Set(Object.keys(TERMINAL_PROFILE_KIND_LABELS));
-  const kind = allowedKinds.has(String(profile.kind || '').toLowerCase())
-    ? String(profile.kind).toLowerCase()
-    : 'custom';
-  const color = /^#[0-9a-f]{6}$/i.test(String(profile.color || '').trim())
-    ? String(profile.color).trim().toLowerCase()
-    : '#58a6ff';
-  const environment = profile.environment && typeof profile.environment === 'object' && !Array.isArray(profile.environment)
-    ? { ...profile.environment }
-    : {};
-
-  return {
-    id: String(profile.id || ''),
-    name: String(profile.name || 'Terminal Profile').trim() || 'Terminal Profile',
-    kind,
-    executable: String(profile.executable || '').trim(),
-    args: Array.isArray(profile.args) ? profile.args.map((item) => String(item ?? '')).slice(0, 40) : [],
-    workingDirectory: String(profile.workingDirectory || '').trim(),
-    environment,
-    icon: Array.from(String(profile.icon || '').trim()).slice(0, 4).join('') || 'TERM',
-    color
-  };
-}
-
-function getTerminalProfiles() {
-  if (!state.settings) {
-    return [];
-  }
-
-  state.settings.terminalProfiles = Array.isArray(state.settings.terminalProfiles)
-    ? state.settings.terminalProfiles.map(normalizeTerminalProfileClient)
-    : [];
-
-  return state.settings.terminalProfiles;
-}
-
-function getDefaultTerminalProfileId() {
-  const profiles = getTerminalProfiles();
-  const requested = String(state.settings?.defaultTerminalProfileId || '');
-
-  return profiles.some((profile) => profile.id === requested)
-    ? requested
-    : (profiles[0]?.id || '');
-}
-
-function getTerminalProfileById(profileId) {
-  return getTerminalProfiles().find((profile) => profile.id === profileId) || null;
-}
-
-function terminalProfileKindLabel(kind) {
-  return TERMINAL_PROFILE_KIND_LABELS[String(kind || '')] || 'Custom';
-}
-
-function parseTerminalProfileEnvironment(text) {
-  const environment = {};
-  const lines = String(text || '').split(/\r?\n/);
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-
-    const separator = line.indexOf('=');
-
-    if (separator <= 0) {
-      return {
-        ok: false,
-        error: `Environment line ${index + 1} must use NAME=value.`
-      };
-    }
-
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1);
-
-    if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) {
-      return {
-        ok: false,
-        error: `Environment variable "${key}" has an invalid name.`
-      };
-    }
-
-    environment[key] = value;
-  }
-
-  return { ok: true, environment };
-}
-
-function terminalProfileEnvironmentToText(environment = {}) {
-  return Object.entries(environment || {})
-    .map(([key, value]) => `${key}=${String(value ?? '')}`)
-    .join('\n');
-}
-
-function terminalProfileDefaultExecutable(kind) {
-  const defaults = {
-    powershell: 'powershell.exe',
-    cmd: 'cmd.exe',
-    'git-bash': 'C:\\Program Files\\Git\\bin\\bash.exe',
-    wsl: 'wsl.exe',
-    custom: ''
-  };
-
-  return defaults[String(kind || '')] || '';
-}
-
-function terminalProfileDefaultIcon(kind) {
-  const icons = {
-    powershell: 'PS',
-    cmd: 'CMD',
-    'git-bash': 'GIT',
-    wsl: 'WSL',
-    custom: 'TERM'
-  };
-
-  return icons[String(kind || '')] || 'TERM';
-}
-
-function populateLocalProfileDropdown(selectedProfileId = null) {
-  const select = $('#add-connection-profile');
-
-  if (!select) {
-    return;
-  }
-
-  const current = selectedProfileId !== null
-    ? String(selectedProfileId || '')
-    : String(select.value || '');
-  const defaultProfileId = getDefaultTerminalProfileId();
-
-  select.innerHTML = '';
-
-  const defaultOption = document.createElement('option');
-  defaultOption.value = '';
-  const defaultProfile = getTerminalProfileById(defaultProfileId);
-  defaultOption.textContent = defaultProfile
-    ? `Default — ${defaultProfile.name}`
-    : 'Default Terminal Profile';
-  select.appendChild(defaultOption);
-
-  getTerminalProfiles().forEach((profile) => {
-    const option = document.createElement('option');
-    option.value = profile.id;
-    option.textContent = `${profile.icon || 'TERM'}  ${profile.name}`;
-    select.appendChild(option);
-  });
-
-  select.value = getTerminalProfiles().some((profile) => profile.id === current)
-    ? current
-    : '';
-}
-
-function closeQuickActionsMenu() {
-  const menu = $('#quick-actions-menu');
-  const button = $('#tool-quick-menu');
-
-  if (menu) {
-    menu.classList.add('hidden');
-    menu.style.removeProperty('left');
-    menu.style.removeProperty('top');
-  }
-
-  button?.setAttribute('aria-expanded', 'false');
-}
-
-function toggleQuickActionsMenu() {
-  const menu = $('#quick-actions-menu');
-  const button = $('#tool-quick-menu');
-
-  if (!menu || !button) {
-    return;
-  }
-
-  if (!menu.classList.contains('hidden')) {
-    closeQuickActionsMenu();
-    return;
-  }
-
-  closeTerminalProfileQuickMenu();
-  closeWorkspaceQuickMenu();
-  closeCommandPalette({ restoreFocus: false });
-  closeTerminalTabPicker();
-
-  menu.classList.remove('hidden');
-  button.setAttribute('aria-expanded', 'true');
-
-  const rect = button.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const gap = 6;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuRect.width - 8));
-  const top = Math.max(8, Math.min(rect.bottom + gap, window.innerHeight - menuRect.height - 8));
-
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  menu.querySelector('button')?.focus();
-}
-
-function runQuickActionsMenuItem(action) {
-  const quickButton = $('#tool-quick-menu');
-
-  if (!action) {
-    return;
-  }
-
-  if (action === 'new-connection') {
-    closeQuickActionsMenu();
-    openAddConnectionModal('remote', true);
-    return;
-  }
-
-  if (action === 'new-terminal') {
-    closeQuickActionsMenu();
-    toggleTerminalProfileQuickMenu(quickButton);
-    return;
-  }
-
-  if (action === 'command-palette') {
-    closeQuickActionsMenu();
-    openCommandPalette();
-    return;
-  }
-
-  if (action === 'workspaces') {
-    closeQuickActionsMenu();
-    toggleWorkspaceQuickMenu(quickButton);
-  }
-}
-
-function renderTerminalProfileQuickMenu() {
-  const menu = $('#terminal-profile-quick-menu');
-
-  if (!menu) {
-    return;
-  }
-
-  const profiles = getTerminalProfiles();
-  const defaultProfileId = getDefaultTerminalProfileId();
-  menu.innerHTML = '';
-
-  if (!profiles.length) {
-    const empty = document.createElement('div');
-    empty.className = 'manage-command-empty';
-    empty.textContent = 'No Terminal Profiles. Create one in Settings.';
-    menu.appendChild(empty);
-    return;
-  }
-
-  const ordered = [...profiles].sort((left, right) => {
-    if (left.id === defaultProfileId) return -1;
-    if (right.id === defaultProfileId) return 1;
-    return 0;
-  });
-
-  ordered.forEach((profile) => {
-    const button = document.createElement('button');
-    const icon = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const details = document.createElement('small');
-    const badge = document.createElement('span');
-
-    button.type = 'button';
-    button.className = 'terminal-profile-quick-item';
-    button.setAttribute('role', 'menuitem');
-
-    icon.className = 'terminal-profile-quick-icon';
-    icon.textContent = profile.icon || 'TERM';
-    icon.style.color = profile.color || '';
-
-    main.className = 'terminal-profile-quick-main';
-    name.textContent = profile.name;
-    details.textContent = `${terminalProfileKindLabel(profile.kind)} · ${profile.workingDirectory || 'root folder'}`;
-    main.append(name, details);
-
-    badge.className = 'terminal-profile-quick-default';
-    badge.textContent = profile.id === defaultProfileId ? 'Default' : '';
-
-    button.append(icon, main, badge);
-    button.addEventListener('click', () => {
-      closeTerminalProfileQuickMenu();
-      launchTerminalProfile(profile.id).catch((error) => {
-        showToast(`Terminal profile failed: ${error.message}`, 7000, 'error');
-      });
-    });
-
-    menu.appendChild(button);
-  });
-}
-
-function closeTerminalProfileQuickMenu() {
-  const menu = $('#terminal-profile-quick-menu');
-
-  if (menu) {
-    menu.classList.add('hidden');
-    menu.style.removeProperty('left');
-    menu.style.removeProperty('top');
-  }
-}
-
-function toggleTerminalProfileQuickMenu(anchor = $('#tool-quick-menu')) {
-  const menu = $('#terminal-profile-quick-menu');
-
-  if (!menu || !anchor) {
-    return;
-  }
-
-  if (!menu.classList.contains('hidden')) {
-    closeTerminalProfileQuickMenu();
-    return;
-  }
-
-  closeQuickActionsMenu();
-  closeWorkspaceQuickMenu();
-  renderTerminalProfileQuickMenu();
-  menu.classList.remove('hidden');
-
-  const rect = anchor.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const gap = 6;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuRect.width - 8));
-  const top = Math.max(8, Math.min(rect.bottom + gap, window.innerHeight - menuRect.height - 8));
-
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  menu.querySelector('button')?.focus();
-}
-
-function renderTerminalProfileList() {
-  const list = $('#terminal-profile-list');
-
-  if (!list) {
-    return;
-  }
-
-  const profiles = getTerminalProfiles();
-  const defaultId = getDefaultTerminalProfileId();
-  list.innerHTML = '';
-
-  profiles.forEach((profile) => {
-    const button = document.createElement('button');
-    const icon = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const meta = document.createElement('small');
-    const badge = document.createElement('span');
-
-    button.type = 'button';
-    button.className = `terminal-profile-list-item ${profile.id === state.editingTerminalProfileId ? 'active' : ''}`;
-
-    icon.className = 'terminal-profile-list-icon';
-    icon.textContent = profile.icon || 'TERM';
-    icon.style.color = profile.color || '';
-
-    main.className = 'terminal-profile-list-main';
-    name.textContent = profile.name;
-    meta.textContent = `${terminalProfileKindLabel(profile.kind)} · ${profile.executable || 'Executable not set'}`;
-    main.append(name, meta);
-
-    badge.className = 'terminal-profile-default-badge';
-    badge.textContent = profile.id === defaultId ? 'Default' : '';
-
-    button.append(icon, main, badge);
-    button.addEventListener('click', () => loadTerminalProfileIntoManager(profile.id));
-    list.appendChild(button);
-  });
-
-  if (!profiles.length) {
-    const empty = document.createElement('div');
-    empty.className = 'manage-command-empty';
-    empty.textContent = 'No terminal profiles yet.';
-    list.appendChild(empty);
-  }
-
-  const selected = getTerminalProfileById(state.editingTerminalProfileId);
-  $('#terminal-profile-duplicate') && ($('#terminal-profile-duplicate').disabled = !selected);
-  $('#terminal-profile-delete') && ($('#terminal-profile-delete').disabled = profiles.length <= 1 || !selected);
-  $('#terminal-profile-launch') && ($('#terminal-profile-launch').disabled = !selected);
-}
-
-function fillTerminalProfileForm(profile = null) {
-  const normalized = normalizeTerminalProfileClient(profile || {
-    name: 'New Profile',
-    kind: 'custom',
-    executable: '',
-    args: [],
-    workingDirectory: '',
-    environment: {},
-    icon: 'TERM',
-    color: '#58a6ff'
-  });
-
-  $('#terminal-profile-name').value = normalized.name;
-  $('#terminal-profile-kind').value = normalized.kind;
-  $('#terminal-profile-executable').value = normalized.executable;
-  $('#terminal-profile-args').value = normalized.args.join('\n');
-  $('#terminal-profile-working-directory').value = normalized.workingDirectory;
-  $('#terminal-profile-icon').value = normalized.icon;
-  $('#terminal-profile-color').value = normalized.color || '#58a6ff';
-  $('#terminal-profile-color-text').value = normalized.color || '#58a6ff';
-  $('#terminal-profile-environment').value = terminalProfileEnvironmentToText(normalized.environment);
-  $('#terminal-profile-default').checked = Boolean(
-    normalized.id && normalized.id === getDefaultTerminalProfileId()
-  );
-}
-
-function loadTerminalProfileIntoManager(profileId) {
-  const profile = getTerminalProfileById(profileId);
-
-  if (!profile) {
-    return;
-  }
-
-  state.editingTerminalProfileId = profile.id;
-  fillTerminalProfileForm(profile);
-  renderTerminalProfileList();
-}
-
-function newTerminalProfileFromManager() {
-  state.editingTerminalProfileId = null;
-  fillTerminalProfileForm();
-  renderTerminalProfileList();
-  $('#terminal-profile-name')?.select();
-}
-
-async function saveTerminalProfileFromManager(options = {}) {
-  if (!state.settings) {
-    return null;
-  }
-
-  const name = String($('#terminal-profile-name')?.value || '').trim();
-  const kind = String($('#terminal-profile-kind')?.value || 'custom').trim();
-  const executable = String($('#terminal-profile-executable')?.value || '').trim();
-  const workingDirectory = String($('#terminal-profile-working-directory')?.value || '').trim();
-  const icon = Array.from(String($('#terminal-profile-icon')?.value || '').trim()).slice(0, 4).join('');
-  const colorText = String($('#terminal-profile-color-text')?.value || $('#terminal-profile-color')?.value || '').trim();
-  const color = /^#[0-9a-f]{6}$/i.test(colorText)
-    ? colorText.toLowerCase()
-    : String($('#terminal-profile-color')?.value || '#58a6ff').toLowerCase();
-  const args = String($('#terminal-profile-args')?.value || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 40);
-  const environmentResult = parseTerminalProfileEnvironment($('#terminal-profile-environment')?.value || '');
-
-  if (!name) {
-    showToast('Terminal profile needs a name.', 4500, 'warning');
-    $('#terminal-profile-name')?.focus();
-    return null;
-  }
-
-  if (!executable) {
-    showToast('Terminal profile needs an executable.', 5000, 'warning');
-    $('#terminal-profile-executable')?.focus();
-    return null;
-  }
-
-  if (!environmentResult.ok) {
-    showToast(environmentResult.error, 6500, 'warning');
-    $('#terminal-profile-environment')?.focus();
-    return null;
-  }
-
-  const profile = normalizeTerminalProfileClient({
-    id: state.editingTerminalProfileId || randomId('profile'),
-    name,
-    kind,
-    executable,
-    args,
-    workingDirectory,
-    environment: environmentResult.environment,
-    icon: icon || terminalProfileDefaultIcon(kind),
-    color
-  });
-
-  const profiles = getTerminalProfiles();
-  const index = profiles.findIndex((item) => item.id === profile.id);
-
-  if (index >= 0) {
-    profiles[index] = profile;
-  } else {
-    profiles.push(profile);
-  }
-
-  state.settings.terminalProfiles = profiles;
-
-  if ($('#terminal-profile-default')?.checked || !getDefaultTerminalProfileId()) {
-    state.settings.defaultTerminalProfileId = profile.id;
-  }
-
-  state.settings = await saveSettingsNow({ refresh: false });
-  state.editingTerminalProfileId = profile.id;
-
-  renderTerminalProfileList();
-  fillTerminalProfileForm(getTerminalProfileById(profile.id));
-  renderTerminalProfileQuickMenu();
-  populateLocalProfileDropdown();
-
-  if (options.showToast !== false) {
-    showToast('Terminal profile saved.', 3500, 'success');
-  }
-
-  return getTerminalProfileById(profile.id);
-}
-
-async function duplicateTerminalProfileFromManager() {
-  const selected = getTerminalProfileById(state.editingTerminalProfileId);
-
-  if (!selected) {
-    showToast('Select a Terminal Profile to duplicate.');
-    return;
-  }
-
-  const duplicate = normalizeTerminalProfileClient({
-    ...selected,
-    id: randomId('profile'),
-    name: `${selected.name} Copy`
-  });
-
-  state.settings.terminalProfiles = [...getTerminalProfiles(), duplicate];
-  state.settings = await saveSettingsNow({ refresh: false });
-  state.editingTerminalProfileId = duplicate.id;
-  renderTerminalProfilesSettings();
-  renderTerminalProfileQuickMenu();
-  populateLocalProfileDropdown();
-  showToast('Terminal profile duplicated.', 3500, 'success');
-}
-
-async function deleteTerminalProfileFromManager() {
-  const selected = getTerminalProfileById(state.editingTerminalProfileId);
-  const profiles = getTerminalProfiles();
-
-  if (!selected) {
-    showToast('Select a Terminal Profile to delete.');
-    return;
-  }
-
-  if (profiles.length <= 1) {
-    showToast('Keep at least one Terminal Profile.', 5000, 'warning');
-    return;
-  }
-
-  const usedBy = (state.settings?.servers || []).filter(
-    (server) => server.type === 'local' && server.profileId === selected.id
-  );
-  const nextProfile = profiles.find((profile) => profile.id !== selected.id);
-  const usageMessage = usedBy.length
-    ? `\n\n${usedBy.length} Local connection(s) use this profile. They will be reassigned to "${nextProfile.name}".`
-    : '';
-  const confirmed = await showConfirmDialog({
-    title: 'Delete Terminal Profile?',
-    message: `Delete "${selected.name}"?${usageMessage}`,
-    confirmLabel: 'Delete Profile',
-    cancelLabel: 'Cancel'
-  });
-
-  if (!confirmed) {
-    return;
-  }
-
-  state.settings.terminalProfiles = profiles.filter((profile) => profile.id !== selected.id);
-  state.settings.servers = (state.settings.servers || []).map((server) => {
-    if (server.type === 'local' && server.profileId === selected.id) {
-      return { ...server, profileId: nextProfile.id };
-    }
-
-    return server;
-  });
-
-  if (state.settings.defaultTerminalProfileId === selected.id) {
-    state.settings.defaultTerminalProfileId = nextProfile.id;
-  }
-
-  state.settings = await saveSettingsNow({ refresh: false });
-  state.editingTerminalProfileId = nextProfile.id;
-  renderTerminalProfilesSettings();
-  renderTerminalProfileQuickMenu();
-  populateLocalProfileDropdown();
-  renderServerList();
-  renderTerminalToolbarActions();
-  showToast('Terminal profile deleted.', 3500, 'success');
-}
-
-function renderDetectedTerminalShells() {
-  const wrap = $('#terminal-profile-detection-results');
-
-  if (!wrap) {
-    return;
-  }
-
-  const shells = Array.isArray(state.detectedTerminalShells) ? state.detectedTerminalShells : [];
-  wrap.innerHTML = '';
-  wrap.classList.toggle('hidden', !shells.length);
-
-  shells.forEach((shellInfo) => {
-    const row = document.createElement('div');
-    const name = document.createElement('strong');
-    const executable = document.createElement('code');
-    const button = document.createElement('button');
-
-    row.className = `terminal-profile-detection-row ${shellInfo.available ? '' : 'unavailable'}`;
-    name.textContent = `${shellInfo.name}${shellInfo.available ? '' : ' — not detected'}`;
-    executable.textContent = shellInfo.executable || 'Not found';
-
-    button.type = 'button';
-    button.className = 'secondary-button';
-    button.textContent = shellInfo.available ? 'Use' : 'Use Path';
-    button.addEventListener('click', () => {
-      $('#terminal-profile-kind').value = shellInfo.kind || 'custom';
-      $('#terminal-profile-executable').value = shellInfo.executable || '';
-      if (!String($('#terminal-profile-icon').value || '').trim()) {
-        $('#terminal-profile-icon').value = terminalProfileDefaultIcon(shellInfo.kind);
-      }
-      if (shellInfo.kind === 'git-bash' && !String($('#terminal-profile-args').value || '').trim()) {
-        $('#terminal-profile-args').value = '--login\n-i';
-      }
-      showToast(`${shellInfo.name} applied to the profile editor.`, 3000, 'success');
-    });
-
-    row.append(name, executable, button);
-    wrap.appendChild(row);
-  });
-}
-
-async function detectTerminalShellsForProfiles() {
-  if (!window.advanceTerminal?.detectTerminalProfileShells) {
-    showToast('Shell detection is not available in this build.', 5000, 'warning');
-    return;
-  }
-
-  const result = await window.advanceTerminal.detectTerminalProfileShells();
-
-  if (!result?.ok) {
-    showToast(result?.error || 'Could not detect installed shells.', 6000, 'error');
-    return;
-  }
-
-  state.detectedTerminalShells = Array.isArray(result.shells) ? result.shells : [];
-  renderDetectedTerminalShells();
-  const available = state.detectedTerminalShells.filter((item) => item.available).length;
-  showToast(`Shell detection finished: ${available} available.`, 3500, available ? 'success' : 'warning');
-}
-
-function renderTerminalProfilesSettings() {
-  if (!state.settings) {
-    return;
-  }
-
-  const profiles = getTerminalProfiles();
-
-  if (!state.editingTerminalProfileId || !getTerminalProfileById(state.editingTerminalProfileId)) {
-    state.editingTerminalProfileId = getDefaultTerminalProfileId() || profiles[0]?.id || null;
-  }
-
-  renderTerminalProfileList();
-  fillTerminalProfileForm(getTerminalProfileById(state.editingTerminalProfileId));
-  renderDetectedTerminalShells();
-}
-
-async function launchTerminalProfile(profileId, options = {}) {
-  const profile = getTerminalProfileById(profileId || getDefaultTerminalProfileId());
-  const requestedWorkingDirectory = normalizeTerminalLocation(options?.workingDirectory || '');
-
-  if (!profile) {
-    showToast('Create a Terminal Profile first.', 5000, 'warning');
-    setActiveView('settings', 'settings');
-    setSettingsTab('terminal-profiles');
-    return;
-  }
-
-  if (!profile.executable) {
-    showToast(`Profile "${profile.name}" has no executable.`, 5500, 'warning');
-    setActiveView('settings', 'settings');
-    setSettingsTab('terminal-profiles');
-    loadTerminalProfileIntoManager(profile.id);
-    return;
-  }
-
-  const connectingSession = getConnectingTerminalSession();
-
-  if (connectingSession) {
-    showConnectionAttemptBusyNotification(connectingSession, { name: profile.name });
-    return;
-  }
-
-  if (state.connectionAttemptInFlight) {
-    showToast('A terminal is already being opened. Please wait.', 4500, 'warning');
-    return;
-  }
-
-  state.connectionAttemptInFlight = true;
-  updateTerminalInteractionState();
-  setActiveView('terminal', 'terminal');
-
-  const terminalId = randomId('term');
-  const server = {
-    id: `terminal-profile:${profile.id}`,
-    type: 'local',
-    name: profile.name,
-    description: 'Terminal Profile',
-    group: 'Profiles',
-    profileId: profile.id,
-    workingDirectory: requestedWorkingDirectory || profile.workingDirectory || ''
-  };
-  let session = null;
-
-  try {
-    session = createTerminalPane(terminalId, server);
-    session.workspaceRestoreWorkingDirectory = server.type === 'remote'
-      ? requestedWorkingDirectory
-      : '';
-    session.status = 'connecting';
-    setTerminalStatus('connecting');
-    showToast(`Opening ${profile.name}...`, 3000, 'info');
-
-    fitTerminalSessionNow(session, { notifyBackend: false });
-    const initialSize = getTerminalSize(session);
-    const result = await window.advanceTerminal.createTerminal({
-      terminalId,
-      profileId: profile.id,
-      workingDirectory: requestedWorkingDirectory,
-      cols: initialSize.cols,
-      rows: initialSize.rows
-    });
-
-    if (!result?.ok) {
-      const error = new Error(result?.error || 'Terminal profile could not be started.');
-      error.code = result?.code || 'TERMINAL_PROFILE_CREATE_FAILED';
-      throw error;
-    }
-
-    fitTerminalSession(session, { delays: [0, 120, 360] });
-    session.closed = false;
-    session.manualClose = false;
-    session.hasConnected = true;
-    session.status = 'connected';
-    session.report = ensureSessionReport(session);
-    session.report.connectedAt = session.report.connectedAt || Date.now();
-    session.report.lastUsageCheckpointAt = Date.now();
-    session.connectionReadyNotified = true;
-
-    setTerminalStatus('connected');
-    recordDailySessionStarted(session);
-    recordSessionEvent(session, `Terminal Profile opened: ${profile.name}`, 'success');
-    showTerminalSession(session);
-    renderTerminalTabs();
-    showToast(`${profile.name} is connected.`, 3500, 'success');
-    return session;
-  } catch (error) {
-    if (session) {
-      session.term.writeln(`Terminal profile failed: ${error.message}`);
-      recordSessionEvent(session, `Terminal profile failed: ${error.message}`, 'error');
-      session.closed = true;
-      session.status = 'error';
-      showTerminalSession(session);
-      renderTerminalTabs();
-    }
-
-    setTerminalStatus('error');
-    showToast(`Terminal profile failed: ${error.message}`, 7000, 'error');
-  } finally {
-    state.connectionAttemptInFlight = false;
-    updateTerminalInteractionState();
-  }
-
-  return null;
-}
-
-
-function getWorkspaces() {
-  if (!state.settings) {
-    return [];
-  }
-
-  if (!Array.isArray(state.settings.workspaces)) {
-    state.settings.workspaces = [];
-  }
-
-  return state.settings.workspaces;
-}
-
-function getWorkspaceById(workspaceId) {
-  return getWorkspaces().find((workspace) => workspace.id === workspaceId) || null;
-}
-
-function cloneWorkspaceData(value) {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch (_) {
-    return value;
-  }
-}
-
-function nextWorkspaceName() {
-  const names = new Set(getWorkspaces().map((workspace) => String(workspace.name || '').toLocaleLowerCase()));
-  let index = getWorkspaces().length + 1;
-  let name = `Workspace ${index}`;
-
-  while (names.has(name.toLocaleLowerCase())) {
-    index += 1;
-    name = `Workspace ${index}`;
-  }
-
-  return name;
-}
-
-function workspaceDisplayDate(value) {
-  const time = Date.parse(String(value || ''));
-
-  if (!Number.isFinite(time)) {
-    return 'Not saved yet';
-  }
-
-  return new Date(time).toLocaleString();
-}
-
-function workspaceSessionTarget(item) {
-  if (!item) {
-    return null;
-  }
-
-  if (item.kind === 'profile') {
-    const profile = getTerminalProfileById(item.profileId);
-
-    return profile
-      ? { kind: 'profile', profile, type: 'local', label: profile.name || item.label || 'Terminal Profile' }
-      : null;
-  }
-
-  const server = state.settings?.servers?.find((candidate) => candidate.id === item.serverId) || null;
-
-  return server
-    ? { kind: 'connection', server, type: server.type === 'remote' ? 'remote' : 'local', label: server.name || item.label || 'Connection' }
-    : null;
-}
-
-function workspaceSessionFromTerminal(session) {
-  if (!session || session.closed) {
-    return null;
-  }
-
-  const server = session.server || {};
-  const savedServer = state.settings?.servers?.find((candidate) => candidate.id === server.id) || null;
-  const explicitProfileId = String(server.profileId || '').trim();
-  const parsedProfileId = String(server.id || '').startsWith('terminal-profile:')
-    ? String(server.id).slice('terminal-profile:'.length)
-    : '';
-  const profileId = explicitProfileId || parsedProfileId;
-  const profile = profileId ? getTerminalProfileById(profileId) : null;
-
-  if (savedServer) {
-    return {
-      kind: 'connection',
-      serverId: savedServer.id,
-      profileId: '',
-      type: savedServer.type === 'remote' ? 'remote' : 'local',
-      label: savedServer.name || server.name || 'Connection',
-      workingDirectory: normalizeTerminalLocation(session.currentLocation || server.workingDirectory || savedServer.workingDirectory || '')
-    };
-  }
-
-  if (profile) {
-    return {
-      kind: 'profile',
-      serverId: '',
-      profileId: profile.id,
-      type: 'local',
-      label: profile.name || server.name || 'Terminal Profile',
-      workingDirectory: normalizeTerminalLocation(session.currentLocation || server.workingDirectory || profile.workingDirectory || '')
-    };
-  }
-
-  return null;
-}
-
-
-function getWorkspaceOrderedTerminalSessions() {
-  const ordered = [];
-  const seen = new Set();
-
-  state.terminalGroups.forEach((group) => {
-    splitGroupTerminalIds(group).forEach((terminalId) => {
-      const session = state.terminals.get(terminalId);
-
-      if (!session || session.closed || seen.has(terminalId)) {
-        return;
-      }
-
-      seen.add(terminalId);
-      ordered.push(session);
-    });
-  });
-
-  state.terminals.forEach((session, terminalId) => {
-    if (!session || session.closed || seen.has(terminalId)) {
-      return;
-    }
-
-    seen.add(terminalId);
-    ordered.push(session);
-  });
-
-  return ordered;
-}
-
-function captureWorkspaceSplitGroups(sessionIndexByTerminalId) {
-  const groups = [];
-
-  state.terminalGroups.forEach((group) => {
-    const root = serializeWorkspaceSplitNode(group.root, sessionIndexByTerminalId);
-
-    if (!root) {
-      return;
-    }
-
-    const activeSessionIndex = sessionIndexByTerminalId.get(group.activeTerminalId);
-    const fallbackTerminalId = splitGroupTerminalIds(group)
-      .find((terminalId) => sessionIndexByTerminalId.has(terminalId));
-    const fallbackIndex = sessionIndexByTerminalId.get(fallbackTerminalId);
-
-    groups.push({
-      root,
-      activeSessionIndex: Number.isInteger(activeSessionIndex) ? activeSessionIndex : fallbackIndex,
-      title: normalizeTerminalTabTitle(group.title),
-      color: normalizeTerminalTabColor(group.color),
-      pinned: group.pinned === true
-    });
-  });
-
-  return groups;
-}
-
-function workspaceSavedTabCount(workspace) {
-  const groups = Array.isArray(workspace?.splitGroups) ? workspace.splitGroups : [];
-  return groups.length || (workspace?.sessions?.length || 0);
-}
-
-function workspaceSavedPaneCount(workspace) {
-  return workspace?.sessions?.length || 0;
-}
-
-function workspaceSplitSessionIndexes(node, result = []) {
-  if (!node) return result;
-
-  if (node.type === 'leaf') {
-    if (Number.isInteger(Number(node.sessionIndex))) {
-      result.push(Number(node.sessionIndex));
-    }
-    return result;
-  }
-
-  workspaceSplitSessionIndexes(node.first, result);
-  workspaceSplitSessionIndexes(node.second, result);
-  return result;
-}
-
-function workspaceSessionLayoutLabel(workspace, sessionIndex) {
-  const groups = Array.isArray(workspace?.splitGroups) ? workspace.splitGroups : [];
-
-  for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
-    const indexes = workspaceSplitSessionIndexes(groups[groupIndex]?.root, []);
-    const paneIndex = indexes.indexOf(sessionIndex);
-
-    if (paneIndex >= 0) {
-      return `Tab ${groupIndex + 1} · Pane ${paneIndex + 1}`;
-    }
-  }
-
-  return `Tab ${sessionIndex + 1}`;
-}
-
-async function captureWorkspaceSnapshot({
-  id = '',
-  name = '',
-  includeToolbar = true,
-  restoreWindowState = true,
-  createdAt = ''
-} = {}) {
-  const now = new Date().toISOString();
-  const terminalSessions = getWorkspaceOrderedTerminalSessions();
-  const sessions = [];
-  const sessionIndexByTerminalId = new Map();
-  let activeSessionIndex = -1;
-  let omitted = 0;
-
-  terminalSessions.forEach((session) => {
-    const item = workspaceSessionFromTerminal(session);
-
-    if (!item) {
-      omitted += 1;
-      return;
-    }
-
-    const sessionIndex = sessions.length;
-    sessionIndexByTerminalId.set(session.terminalId, sessionIndex);
-
-    if (session.terminalId === state.activeTerminalId) {
-      activeSessionIndex = sessionIndex;
-    }
-
-    sessions.push(item);
-  });
-
-  if (sessions.length && activeSessionIndex < 0) {
-    activeSessionIndex = 0;
-  }
-
-  const splitGroups = captureWorkspaceSplitGroups(sessionIndexByTerminalId);
-
-  let windowState = null;
-
-  if (window.advanceTerminal?.getWorkspaceWindowState) {
-    try {
-      const result = await window.advanceTerminal.getWorkspaceWindowState();
-      windowState = result?.ok === true ? result.state : result;
-    } catch (error) {
-      appendActivityFeedEvent(`Workspace window state could not be read: ${error.message}`, 'warning', { dedupeMs: 1200 });
-    }
-  }
-
-  return {
-    id: id || randomId('workspace'),
-    name: String(name || nextWorkspaceName()).trim().slice(0, 100) || nextWorkspaceName(),
-    sessions,
-    activeSessionIndex,
-    splitGroups,
-    includeToolbar: includeToolbar !== false,
-    restoreWindowState: restoreWindowState !== false,
-    toolbarActions: includeToolbar !== false
-      ? cloneWorkspaceData(state.settings?.terminalActions || [])
-      : [],
-    windowState: windowState || {},
-    createdAt: createdAt || now,
-    updatedAt: now,
-    omitted
-  };
-}
-
-async function saveCurrentWorkspaceQuick() {
-  if (state.workspaceRestoreInFlight) {
-    showToast('Wait for the current workspace restore to finish.', 4000, 'warning');
-    return null;
-  }
-
-  const active = getWorkspaceById(state.activeWorkspaceId);
-  const snapshot = await captureWorkspaceSnapshot({
-    id: active?.id || '',
-    name: active?.name || nextWorkspaceName(),
-    includeToolbar: active?.includeToolbar !== false,
-    restoreWindowState: active?.restoreWindowState !== false,
-    createdAt: active?.createdAt || ''
-  });
-
-  if (!snapshot.sessions.length && state.terminals.size) {
-    showToast('No restorable terminal tabs were found. Only saved connections and Terminal Profiles can be captured.', 6500, 'warning');
-    return null;
-  }
-
-  const isStartup = Boolean(active && state.settings?.startupWorkspaceId === active.id);
-  const persisted = await persistWorkspaceRecord(snapshot, {
-    startup: isStartup,
-    toastMessage: active
-      ? `Workspace "${snapshot.name}" updated.`
-      : `Workspace "${snapshot.name}" saved.`
-  });
-
-  state.activeWorkspaceId = persisted?.id || snapshot.id;
-  state.editingWorkspaceId = state.activeWorkspaceId;
-  state.workspaceDraftMode = false;
-  renderWorkspaceQuickMenu();
-
-  if (state.activeSettingsTab === 'workspaces') {
-    renderWorkspaceSettings();
-  }
-
-  if (snapshot.omitted) {
-    showToast(
-      `${snapshot.name} saved. ${snapshot.omitted} unsupported transient tab${snapshot.omitted === 1 ? ' was' : 's were'} skipped.`,
-      6500,
-      'warning'
-    );
-  }
-
-  appendActivityFeedEvent(
-    `Workspace saved: ${snapshot.name} (${snapshot.splitGroups?.length || snapshot.sessions.length} tab${(snapshot.splitGroups?.length || snapshot.sessions.length) === 1 ? '' : 's'} · ${snapshot.sessions.length} pane${snapshot.sessions.length === 1 ? '' : 's'}).`,
-    'action',
-    { dedupeMs: 1000 }
-  );
-
-  return persisted;
-}
-
-function workspaceFormOptions() {
-  return {
-    name: String($('#workspace-name')?.value || '').trim().slice(0, 100),
-    startup: $('#workspace-startup')?.checked === true,
-    includeToolbar: $('#workspace-include-toolbar')?.checked !== false,
-    restoreWindowState: $('#workspace-restore-window')?.checked !== false
-  };
-}
-
-async function persistWorkspaceRecord(workspace, { startup = false, toastMessage = '' } = {}) {
-  if (!state.settings || !workspace) {
-    return null;
-  }
-
-  const workspaces = getWorkspaces();
-  const index = workspaces.findIndex((item) => item.id === workspace.id);
-
-  if (index >= 0) {
-    workspaces[index] = workspace;
-  } else {
-    workspaces.push(workspace);
-  }
-
-  state.settings.workspaces = workspaces;
-
-  if (startup) {
-    state.settings.startupWorkspaceId = workspace.id;
-  } else if (state.settings.startupWorkspaceId === workspace.id) {
-    state.settings.startupWorkspaceId = '';
-  }
-
-  await saveSettingsNow({ refresh: false });
-  state.editingWorkspaceId = workspace.id;
-  state.workspaceDraftMode = false;
-  renderWorkspaceQuickMenu();
-
-  if (state.activeSettingsTab === 'workspaces') {
-    renderWorkspaceSettings();
-  }
-
-  if (toastMessage) {
-    showToast(toastMessage, 4200, 'success');
-  }
-
-  return getWorkspaceById(workspace.id) || workspace;
-}
-
-function renderWorkspaceList() {
-  const list = $('#workspace-list');
-
-  if (!list) {
-    return;
-  }
-
-  const workspaces = getWorkspaces();
-  list.innerHTML = '';
-
-  workspaces.forEach((workspace) => {
-    const targetCount = (workspace.sessions || []).filter((item) => Boolean(workspaceSessionTarget(item))).length;
-    const missingCount = Math.max(0, (workspace.sessions || []).length - targetCount);
-    const button = document.createElement('button');
-    const icon = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const meta = document.createElement('small');
-    const badge = document.createElement('span');
-
-    button.type = 'button';
-    button.className = `workspace-list-item ${workspace.id === state.editingWorkspaceId && !state.workspaceDraftMode ? 'active' : ''}`;
-    button.dataset.workspaceId = workspace.id;
-
-    icon.className = 'workspace-list-icon';
-    icon.textContent = 'WS';
-
-    main.className = 'workspace-list-main';
-    name.textContent = workspace.name || 'Workspace';
-    const tabCount = workspaceSavedTabCount(workspace);
-    const paneCount = workspaceSavedPaneCount(workspace);
-    meta.textContent = `${tabCount} tab${tabCount === 1 ? '' : 's'} · ${paneCount} pane${paneCount === 1 ? '' : 's'} · ${workspaceDisplayDate(workspace.updatedAt)}`;
-    main.append(name, meta);
-
-    badge.className = 'workspace-startup-badge';
-    if (state.settings?.startupWorkspaceId === workspace.id) {
-      badge.textContent = 'Startup';
-    } else if (missingCount) {
-      badge.textContent = `${missingCount} missing`;
-      badge.classList.add('missing');
-    } else if (state.activeWorkspaceId === workspace.id) {
-      badge.textContent = 'Active';
-    } else {
-      badge.textContent = '';
-    }
-
-    button.append(icon, main, badge);
-    button.addEventListener('click', () => {
-      state.editingWorkspaceId = workspace.id;
-      state.workspaceDraftMode = false;
-      renderWorkspaceSettings();
-    });
-    list.appendChild(button);
-  });
-
-  if (!workspaces.length) {
-    const empty = document.createElement('div');
-    empty.className = 'workspace-session-empty';
-    empty.textContent = 'No workspaces saved yet.';
-    list.appendChild(empty);
-  }
-}
-
-function renderWorkspaceSessionPreview(workspace) {
-  const list = $('#workspace-session-list');
-
-  if (!list) {
-    return;
-  }
-
-  list.innerHTML = '';
-  const sessions = Array.isArray(workspace?.sessions) ? workspace.sessions : [];
-
-  if (!sessions.length) {
-    const empty = document.createElement('div');
-    empty.className = 'workspace-session-empty';
-    empty.textContent = state.workspaceDraftMode
-      ? 'Capture the current terminal state to add tabs to this workspace.'
-      : 'This workspace does not contain terminal tabs or panes.';
-    list.appendChild(empty);
-    return;
-  }
-
-  sessions.forEach((item, index) => {
-    const target = workspaceSessionTarget(item);
-    const row = document.createElement('div');
-    const order = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const meta = document.createElement('small');
-    const badge = document.createElement('span');
-
-    row.className = 'workspace-session-row';
-    order.className = 'workspace-session-index';
-    order.textContent = String(index + 1);
-
-    main.className = 'workspace-session-copy';
-    name.textContent = target?.label || item.label || (item.kind === 'profile' ? 'Missing Terminal Profile' : 'Missing Connection');
-    const location = String(item.workingDirectory || '').trim();
-    meta.textContent = [
-      workspaceSessionLayoutLabel(workspace, index),
-      item.kind === 'profile' ? 'Terminal Profile' : (item.type === 'remote' ? 'SSH' : 'Local'),
-      location || 'Default folder'
-    ].join(' · ');
-    main.append(name, meta);
-
-    badge.className = `workspace-session-state ${target ? '' : 'missing'}`;
-    if (!target) {
-      badge.textContent = 'Missing';
-    } else if (index === Number(workspace.activeSessionIndex)) {
-      badge.textContent = 'Active';
-    } else {
-      badge.textContent = item.type === 'remote' ? 'SSH' : 'Local';
-    }
-
-    row.append(order, main, badge);
-    list.appendChild(row);
-  });
-}
-
-function renderWorkspaceSettings() {
-  if (!state.settings) {
-    return;
-  }
-
-  const workspaces = getWorkspaces();
-
-  if (!state.workspaceDraftMode && (!state.editingWorkspaceId || !getWorkspaceById(state.editingWorkspaceId))) {
-    state.editingWorkspaceId = workspaces[0]?.id || null;
-  }
-
-  renderWorkspaceList();
-
-  const workspace = state.workspaceDraftMode
-    ? null
-    : getWorkspaceById(state.editingWorkspaceId);
-  const nameInput = $('#workspace-name');
-  const startupInput = $('#workspace-startup');
-  const toolbarInput = $('#workspace-include-toolbar');
-  const windowInput = $('#workspace-restore-window');
-  const summary = $('#workspace-summary');
-  const duplicateButton = $('#workspace-duplicate');
-  const deleteButton = $('#workspace-delete');
-  const openButton = $('#workspace-open');
-
-  if (state.workspaceDraftMode) {
-    if (nameInput && !nameInput.value) {
-      nameInput.value = nextWorkspaceName();
-    }
-
-    if (startupInput) startupInput.checked = false;
-    if (toolbarInput) toolbarInput.checked = true;
-    if (windowInput) windowInput.checked = true;
-    if (summary) summary.textContent = 'New workspace. Capture the current terminal state to save its tab and split-pane layout.';
-    renderWorkspaceSessionPreview(null);
-  } else if (workspace) {
-    if (nameInput) nameInput.value = workspace.name || '';
-    if (startupInput) startupInput.checked = state.settings.startupWorkspaceId === workspace.id;
-    if (toolbarInput) toolbarInput.checked = workspace.includeToolbar !== false;
-    if (windowInput) windowInput.checked = workspace.restoreWindowState !== false;
-
-    const missing = (workspace.sessions || []).filter((item) => !workspaceSessionTarget(item)).length;
-    const details = [
-      `${workspaceSavedTabCount(workspace)} saved tab${workspaceSavedTabCount(workspace) === 1 ? '' : 's'} · ${workspaceSavedPaneCount(workspace)} pane${workspaceSavedPaneCount(workspace) === 1 ? '' : 's'}`,
-      `updated ${workspaceDisplayDate(workspace.updatedAt)}`
-    ];
-
-    if (workspace.includeToolbar !== false) details.push('toolbar saved');
-    if (workspace.restoreWindowState !== false) details.push('window placement saved');
-    if (missing) details.push(`${missing} missing target${missing === 1 ? '' : 's'}`);
-
-    if (summary) summary.textContent = details.join(' · ');
-    renderWorkspaceSessionPreview(workspace);
-  } else {
-    if (nameInput) nameInput.value = '';
-    if (startupInput) startupInput.checked = false;
-    if (toolbarInput) toolbarInput.checked = true;
-    if (windowInput) windowInput.checked = true;
-    if (summary) summary.textContent = 'No workspace selected. Save the current terminal state to create one.';
-    renderWorkspaceSessionPreview(null);
-  }
-
-  if (duplicateButton) duplicateButton.disabled = !workspace || state.workspaceDraftMode;
-  if (deleteButton) deleteButton.disabled = !workspace || state.workspaceDraftMode;
-  if (openButton) openButton.disabled = !workspace || state.workspaceDraftMode || !(workspace.sessions || []).length;
-}
-
-function newWorkspaceFromManager() {
-  state.workspaceDraftMode = true;
-  state.editingWorkspaceId = null;
-  renderWorkspaceSettings();
-
-  const nameInput = $('#workspace-name');
-  if (nameInput) {
-    nameInput.value = nextWorkspaceName();
-    nameInput.focus();
-    nameInput.select();
-  }
-}
-
-async function captureWorkspaceFromManager() {
-  if (state.workspaceRestoreInFlight) {
-    showToast('Wait for the current workspace restore to finish.', 4000, 'warning');
-    return null;
-  }
-
-  const options = workspaceFormOptions();
-  const existing = state.workspaceDraftMode ? null : getWorkspaceById(state.editingWorkspaceId);
-  const snapshot = await captureWorkspaceSnapshot({
-    id: existing?.id || '',
-    name: options.name || existing?.name || nextWorkspaceName(),
-    includeToolbar: options.includeToolbar,
-    restoreWindowState: options.restoreWindowState,
-    createdAt: existing?.createdAt || ''
-  });
-
-  if (!snapshot.sessions.length && state.terminals.size) {
-    showToast('No restorable terminal tabs were found. Only saved connections and Terminal Profiles can be captured.', 6500, 'warning');
-    return null;
-  }
-
-  const persisted = await persistWorkspaceRecord(snapshot, {
-    startup: options.startup,
-    toastMessage: existing ? `Workspace "${snapshot.name}" updated.` : `Workspace "${snapshot.name}" saved.`
-  });
-
-  state.activeWorkspaceId = persisted?.id || snapshot.id;
-
-  if (snapshot.omitted) {
-    showToast(
-      `${snapshot.name} saved. ${snapshot.omitted} unsupported transient tab${snapshot.omitted === 1 ? ' was' : 's were'} skipped.`,
-      6500,
-      'warning'
-    );
-  }
-
-  renderWorkspaceQuickMenu();
-  renderWorkspaceSettings();
-  appendActivityFeedEvent(`Workspace saved: ${snapshot.name} (${snapshot.splitGroups?.length || snapshot.sessions.length} tab${(snapshot.splitGroups?.length || snapshot.sessions.length) === 1 ? '' : 's'} · ${snapshot.sessions.length} pane${snapshot.sessions.length === 1 ? '' : 's'}).`, 'action', { dedupeMs: 1000 });
-  return persisted;
-}
-
-async function saveWorkspaceDetailsFromManager() {
-  if (state.workspaceDraftMode) {
-    return captureWorkspaceFromManager();
-  }
-
-  const workspace = getWorkspaceById(state.editingWorkspaceId);
-
-  if (!workspace) {
-    return captureWorkspaceFromManager();
-  }
-
-  const options = workspaceFormOptions();
-  const updated = {
-    ...cloneWorkspaceData(workspace),
-    name: options.name || workspace.name || 'Workspace',
-    includeToolbar: options.includeToolbar,
-    restoreWindowState: options.restoreWindowState,
-    updatedAt: new Date().toISOString()
-  };
-
-  if (!options.includeToolbar) {
-    updated.toolbarActions = [];
-  } else if (workspace.includeToolbar === false) {
-    updated.toolbarActions = cloneWorkspaceData(state.settings?.terminalActions || []);
-  }
-
-  await persistWorkspaceRecord(updated, {
-    startup: options.startup,
-    toastMessage: `Workspace "${updated.name}" details saved.`
-  });
-
-  return updated;
-}
-
-async function duplicateWorkspaceFromManager() {
-  const workspace = getWorkspaceById(state.editingWorkspaceId);
-
-  if (!workspace || state.workspaceDraftMode) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const duplicate = {
-    ...cloneWorkspaceData(workspace),
-    id: randomId('workspace'),
-    name: `${workspace.name || 'Workspace'} Copy`.slice(0, 100),
-    createdAt: now,
-    updatedAt: now
-  };
-
-  await persistWorkspaceRecord(duplicate, {
-    startup: false,
-    toastMessage: `Workspace duplicated as "${duplicate.name}".`
-  });
-}
-
-async function deleteWorkspaceFromManager() {
-  const workspace = getWorkspaceById(state.editingWorkspaceId);
-
-  if (!workspace || state.workspaceDraftMode) {
-    return;
-  }
-
-  const confirmed = await showConfirmDialog({
-    title: 'Delete Workspace?',
-    message: `Delete "${workspace.name}"? This removes only the saved workspace layout. Connections, profiles, and terminal data are not deleted.`,
-    confirmLabel: 'Delete Workspace',
-    cancelLabel: 'Cancel'
-  });
-
-  if (!confirmed) {
-    return;
-  }
-
-  state.settings.workspaces = getWorkspaces().filter((item) => item.id !== workspace.id);
-
-  if (state.settings.startupWorkspaceId === workspace.id) {
-    state.settings.startupWorkspaceId = '';
-  }
-
-  if (state.activeWorkspaceId === workspace.id) {
-    state.activeWorkspaceId = null;
-  }
-
-  state.editingWorkspaceId = state.settings.workspaces[0]?.id || null;
-  state.workspaceDraftMode = false;
-  await saveSettingsNow({ refresh: false });
-  renderWorkspaceQuickMenu();
-  renderWorkspaceSettings();
-  showToast(`Workspace "${workspace.name}" deleted.`, 4000, 'success');
-}
-
-function closeWorkspaceQuickMenu() {
-  const menu = $('#workspace-quick-menu');
-
-  if (menu) {
-    menu.classList.add('hidden');
-    menu.style.removeProperty('left');
-    menu.style.removeProperty('top');
-  }
-}
-
-function renderWorkspaceQuickMenu() {
-  const menu = $('#workspace-quick-menu');
-
-  if (!menu || !state.settings) {
-    return;
-  }
-
-  menu.innerHTML = '';
-
-  const heading = document.createElement('div');
-  heading.className = 'terminal-profile-quick-heading';
-  heading.textContent = 'Workspaces';
-  menu.appendChild(heading);
-
-  const saveButton = document.createElement('button');
-  saveButton.type = 'button';
-  saveButton.className = 'terminal-profile-quick-item workspace-quick-item workspace-quick-action';
-  saveButton.innerHTML = '<span class="terminal-profile-quick-icon">＋</span><span><strong></strong><small></small></span>';
-  saveButton.querySelector('strong').textContent = state.activeWorkspaceId && getWorkspaceById(state.activeWorkspaceId)
-    ? `Update ${getWorkspaceById(state.activeWorkspaceId).name}`
-    : 'Save Current Workspace';
-  saveButton.querySelector('small').textContent = 'Capture the current tab/split layout, folders, toolbar and window placement.';
-  saveButton.addEventListener('click', async () => {
-    closeWorkspaceQuickMenu();
-    await saveCurrentWorkspaceQuick();
-  });
-  menu.appendChild(saveButton);
-
-  const workspaces = getWorkspaces();
-
-  if (workspaces.length) {
-    const divider = document.createElement('div');
-    divider.className = 'terminal-profile-quick-divider workspace-quick-divider';
-    menu.appendChild(divider);
-  }
-
-  workspaces.forEach((workspace) => {
-    const button = document.createElement('button');
-    const icon = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const meta = document.createElement('small');
-
-    button.type = 'button';
-    button.className = 'terminal-profile-quick-item workspace-quick-item';
-    button.dataset.workspaceId = workspace.id;
-
-    icon.className = 'terminal-profile-quick-icon';
-    icon.textContent = 'WS';
-
-    name.textContent = workspace.name || 'Workspace';
-    const tabCount = workspaceSavedTabCount(workspace);
-    const paneCount = workspaceSavedPaneCount(workspace);
-    meta.textContent = `${tabCount} tab${tabCount === 1 ? '' : 's'} · ${paneCount} pane${paneCount === 1 ? '' : 's'}${state.settings.startupWorkspaceId === workspace.id ? ' · Startup' : ''}`;
-    main.append(name, meta);
-    button.append(icon, main);
-
-    button.addEventListener('click', () => {
-      closeWorkspaceQuickMenu();
-      restoreWorkspace(workspace.id).catch((error) => {
-        showToast(`Workspace restore failed: ${error.message}`, 7000, 'error');
-      });
-    });
-
-    menu.appendChild(button);
-  });
-
-  const divider = document.createElement('div');
-  divider.className = 'terminal-profile-quick-divider workspace-quick-divider';
-  const manage = document.createElement('button');
-  manage.type = 'button';
-  manage.className = 'terminal-profile-quick-item workspace-quick-item';
-  manage.innerHTML = '<span class="terminal-profile-quick-icon">⚙</span><span><strong>Manage Workspaces</strong><small>Create, rename, duplicate or delete workspaces.</small></span>';
-  manage.addEventListener('click', () => {
-    closeWorkspaceQuickMenu();
-    setActiveView('settings', 'settings');
-    setSettingsTab('workspaces');
-  });
-  menu.append(divider, manage);
-}
-
-function toggleWorkspaceQuickMenu(anchor = $('#tool-quick-menu')) {
-  const menu = $('#workspace-quick-menu');
-
-  if (!menu || !anchor) {
-    return;
-  }
-
-  if (!menu.classList.contains('hidden')) {
-    closeWorkspaceQuickMenu();
-    return;
-  }
-
-  closeQuickActionsMenu();
-  closeTerminalProfileQuickMenu();
-  closeCommandPalette({ restoreFocus: false });
-  renderWorkspaceQuickMenu();
-  menu.classList.remove('hidden');
-
-  const rect = anchor.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const gap = 6;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuRect.width - 8));
-  const top = Math.max(8, Math.min(rect.bottom + gap, window.innerHeight - menuRect.height - 8));
-
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  menu.querySelector('button')?.focus();
-}
-
-function delayWorkspace(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForWorkspaceSessionReady(session, timeoutMs = 90000) {
-  if (!session || session.closed) {
-    return false;
-  }
-
-  if (session.server?.type !== 'remote') {
-    return session.status === 'connected';
-  }
-
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (session.closed || session.status === 'error' || session.status === 'disconnected') {
-      return false;
-    }
-
-    if (session.status === 'connected' && session.cleanSshStartupActive !== true) {
-      return true;
-    }
-
-    await delayWorkspace(250);
-  }
-
-  return false;
-}
-
-async function closeAllTerminalSessionsForWorkspace() {
-  const terminalIds = Array.from(state.terminals.keys());
-
-  if (!terminalIds.length) {
-    return;
-  }
-
-  for (const terminalId of terminalIds) {
-    if (state.terminals.has(terminalId)) {
-      await Promise.resolve(closeTerminalSession(terminalId));
-    }
-  }
-
-  await delayWorkspace(60);
-}
-
-async function applyWorkspaceToolbar(workspace) {
-  if (!workspace?.includeToolbar || !Array.isArray(workspace.toolbarActions)) {
-    return;
-  }
-
-  state.settings.terminalActions = cloneWorkspaceData(workspace.toolbarActions);
-  await saveSettingsNow({ refresh: false });
-  renderTerminalToolbarActions();
-}
-
-async function restoreWorkspace(workspaceId, { startup = false } = {}) {
-  const workspace = getWorkspaceById(workspaceId);
-
-  if (!workspace) {
-    showToast('Workspace no longer exists.', 4500, 'warning');
-    return false;
-  }
-
-  if (state.workspaceRestoreInFlight) {
-    showToast('A workspace restore is already running.', 4500, 'warning');
-    return false;
-  }
-
-  const entries = (workspace.sessions || []).map((item, index) => ({
-    item,
-    index,
-    target: workspaceSessionTarget(item)
-  }));
-  const validEntries = entries.filter((entry) => entry.target);
-
-  if (!entries.length) {
-    showToast(`Workspace "${workspace.name}" has no saved terminal tabs or panes.`, 5000, 'warning');
-    return false;
-  }
-
-  if (!validEntries.length) {
-    showToast(`Workspace "${workspace.name}" cannot be opened because all saved connections/profiles are missing.`, 7000, 'error');
-    return false;
-  }
-
-  const currentPaneCount = Array.from(state.terminals.values()).filter((session) => !session.closed).length;
-  const currentTabCount = Array.from(state.terminalGroups.values())
-    .filter((group) => splitGroupTerminalIds(group).some((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      return session && !session.closed;
-    }))
-    .length;
-
-  if (!startup && currentPaneCount) {
-    const confirmed = await showConfirmDialog({
-      title: 'Open Workspace?',
-      message: `Opening "${workspace.name}" will close ${currentTabCount} current tab${currentTabCount === 1 ? '' : 's'} (${currentPaneCount} pane${currentPaneCount === 1 ? '' : 's'}) and restore ${workspaceSavedTabCount(workspace)} saved tab${workspaceSavedTabCount(workspace) === 1 ? '' : 's'} (${validEntries.length} pane${validEntries.length === 1 ? '' : 's'}). Continue?`,
-      confirmLabel: 'Open Workspace',
-      cancelLabel: 'Cancel'
-    });
-
-    if (!confirmed) {
-      return false;
-    }
-  }
-
-  state.workspaceRestoreInFlight = true;
-  document.body.classList.add('workspace-restore-active');
-  closeWorkspaceQuickMenu();
-  closeTerminalProfileQuickMenu();
-  closeCommandPalette({ restoreFocus: false });
-
-  let opened = 0;
-  let skipped = entries.length - validEntries.length;
-  const openedByOriginalIndex = new Map();
-  let stopReason = '';
-
-  try {
-    await closeAllTerminalSessionsForWorkspace();
-
-    if (workspace.restoreWindowState !== false && window.advanceTerminal?.applyWorkspaceWindowState) {
-      try {
-        await window.advanceTerminal.applyWorkspaceWindowState(workspace.windowState || {});
-        await delayWorkspace(80);
-      } catch (error) {
-        appendActivityFeedEvent(`Workspace window placement skipped: ${error.message}`, 'warning', { dedupeMs: 1200 });
-      }
-    }
-
-    await applyWorkspaceToolbar(workspace);
-    setActiveView('terminal', 'terminal');
-
-    for (let entryIndex = 0; entryIndex < validEntries.length; entryIndex += 1) {
-      const entry = validEntries[entryIndex];
-      const { item, target } = entry;
-      let session = null;
-
-      if (target.kind === 'profile') {
-        session = await launchTerminalProfile(target.profile.id, {
-          workingDirectory: item.workingDirectory || '',
-          workspaceRestore: true
-        });
-      } else {
-        selectServer(target.server.id);
-        session = await connectSelectedServer({
-          workingDirectory: item.workingDirectory || '',
-          workspaceRestore: true
-        });
-      }
-
-      if (!session) {
-        skipped += 1;
-        continue;
-      }
-
-      opened += 1;
-      openedByOriginalIndex.set(entry.index, session.terminalId);
-
-      if (session.server?.type === 'remote') {
-        const ready = await waitForWorkspaceSessionReady(session);
-
-        if (!ready) {
-          stopReason = `SSH session "${session.server?.name || 'SSH'}" did not become ready, so remaining tabs were not opened to avoid overlapping connection attempts.`;
-          skipped += Math.max(0, validEntries.length - entryIndex - 1);
-          break;
-        }
-      }
-
-      await delayWorkspace(40);
-    }
-
-    restoreWorkspaceSplitLayout(workspace, openedByOriginalIndex);
-
-    const preferredTerminalId = openedByOriginalIndex.get(Number(workspace.activeSessionIndex));
-    const fallbackTerminalId = Array.from(openedByOriginalIndex.values())[0] || null;
-
-    if (preferredTerminalId && state.terminals.has(preferredTerminalId)) {
-      activateTerminal(preferredTerminalId);
-    } else if (fallbackTerminalId && state.terminals.has(fallbackTerminalId)) {
-      activateTerminal(fallbackTerminalId);
-    }
-
-    state.activeWorkspaceId = workspace.id;
-    state.editingWorkspaceId = workspace.id;
-    state.workspaceDraftMode = false;
-    renderWorkspaceQuickMenu();
-    renderTerminalTabs();
-
-    const restoredTabCount = workspaceSavedTabCount(workspace);
-    const summary = `Workspace "${workspace.name}" restored: ${restoredTabCount} tab${restoredTabCount === 1 ? '' : 's'} · ${opened} pane${opened === 1 ? '' : 's'} opened${skipped ? `, ${skipped} skipped` : ''}.`;
-    appendActivityFeedEvent(summary, skipped ? 'warning' : 'success', { dedupeMs: 1200 });
-    showToast(stopReason ? `${summary} ${stopReason}` : summary, stopReason || skipped ? 8000 : 4500, stopReason || skipped ? 'warning' : 'success');
-
-    requestAnimationFrame(() => {
-      fitActiveTerminal();
-      const active = state.terminals.get(state.activeTerminalId);
-      if (active && !active.closed) focusTerminal(active);
-    });
-
-    return opened > 0;
-  } finally {
-    state.workspaceRestoreInFlight = false;
-    document.body.classList.remove('workspace-restore-active');
-
-    if (state.activeSettingsTab === 'workspaces') {
-      renderWorkspaceSettings();
-    }
-  }
-}
-
-async function maybeRestoreStartupWorkspace() {
-  if (state.workspaceStartupRestoreAttempted) {
-    return;
-  }
-
-  state.workspaceStartupRestoreAttempted = true;
-  const workspaceId = String(state.settings?.startupWorkspaceId || '');
-
-  if (!workspaceId) {
-    await restorePinnedTerminalTabsOnStartup();
-    return;
-  }
-
-  const workspace = getWorkspaceById(workspaceId);
-
-  if (!workspace) {
-    state.settings.startupWorkspaceId = '';
-    await saveSettingsNow({ refresh: false });
-    await restorePinnedTerminalTabsOnStartup();
-    return;
-  }
-
-  appendActivityFeedEvent(`Opening startup workspace: ${workspace.name}.`, 'system', { dedupeMs: 1200 });
-  await restoreWorkspace(workspace.id, { startup: true });
-  await restorePinnedTerminalTabsOnStartup();
-}
-
-
-function terminalToolbarVisibilityLabel(action) {
-  const normalized = normalizeTerminalToolbarAction(action);
-  const labels = {
-    all: 'All',
-    local: 'Local',
-    ssh: 'SSH',
-    admin: 'Admin',
-    profile: 'Profile'
-  };
-
-  if (normalized.visibility === 'profile') {
-    const profile = getTerminalProfileById(normalized.profileId);
-    return profile ? `Profile: ${profile.name}` : 'Profile: missing (hidden)';
-  }
-
-  return labels[normalized.visibility] || 'All';
 }
 
 function renderTerminalActionList() {
@@ -7323,139 +4937,31 @@ function renderTerminalActionList() {
   const actions = getTerminalToolbarActions();
   list.innerHTML = '';
 
-  actions.forEach((actionValue, index) => {
-    const action = normalizeTerminalToolbarAction(actionValue);
+  actions.forEach((action, index) => {
     const item = document.createElement('button');
-    const icon = document.createElement('span');
-    const main = document.createElement('span');
-    const name = document.createElement('strong');
-    const kind = document.createElement('small');
-    const order = document.createElement('span');
-    const details = [];
-
     item.type = 'button';
-    item.draggable = true;
-    item.dataset.actionId = action.id;
     item.className = `terminal-action-list-item ${action.id === state.editingTerminalActionId ? 'active' : ''}`;
+    item.innerHTML = `
+      <span class="terminal-action-list-icon">${terminalActionIconSvg(action.icon)}</span>
+      <span class="terminal-action-list-main">
+        <strong></strong>
+        <small></small>
+      </span>
+      <span class="terminal-action-list-order"></span>
+    `;
 
-    icon.className = 'terminal-action-list-icon';
+    item.querySelector('strong').textContent = action.name || 'Terminal Action';
+    item.querySelector('small').textContent = action.enabled === false ? 'Hidden from toolbar' : action.action;
+    item.querySelector('.terminal-action-list-order').textContent = String(index + 1);
 
-    if (action.itemType === 'separator') {
-      icon.classList.add('terminal-action-list-separator-icon');
-      icon.textContent = '⋮';
-    } else {
-      setTerminalActionIconContent(icon, action);
-      if (action.color) {
-        icon.style.color = action.color;
-      }
-    }
-
-    main.className = 'terminal-action-list-main';
-    name.textContent = action.itemType === 'separator' ? 'Separator' : (action.name || 'Terminal Action');
-
-    if (action.itemType === 'separator') {
-      details.push('Separator');
-    } else {
-      details.push(terminalActionKindLabel(action.action));
-
-      if (action.dropdown) {
-        details.push(`Dropdown: ${action.dropdown}`);
-      } else if (action.group) {
-        details.push(`Group: ${action.group}`);
-      }
-
-      if (normalizeTerminalToolbarShortcut(action.shortcut)) {
-        details.push(normalizeTerminalToolbarShortcut(action.shortcut));
-      }
-    }
-
-    details.push(terminalToolbarVisibilityLabel(action));
-
-    if (action.enabled === false) {
-      details.unshift('Hidden');
-    }
-
-    kind.textContent = details.join(' · ');
-    main.append(name, kind);
-
-    order.className = 'terminal-action-list-order';
-    order.textContent = String(index + 1);
-
-    item.append(icon, main, order);
     item.addEventListener('click', () => loadTerminalActionIntoManager(action.id));
-
-    item.addEventListener('dragstart', (event) => {
-      state.draggingTerminalActionId = action.id;
-      item.classList.add('dragging');
-      event.dataTransfer?.setData('text/plain', action.id);
-
-      if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-      }
-    });
-
-    item.addEventListener('dragover', (event) => {
-      if (!state.draggingTerminalActionId || state.draggingTerminalActionId === action.id) {
-        return;
-      }
-
-      event.preventDefault();
-      item.classList.add('drag-over');
-    });
-
-    item.addEventListener('dragleave', () => {
-      item.classList.remove('drag-over');
-    });
-
-    item.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      item.classList.remove('drag-over');
-      const draggedId = state.draggingTerminalActionId || event.dataTransfer?.getData('text/plain');
-
-      if (!draggedId || draggedId === action.id) {
-        return;
-      }
-
-      const ordered = getTerminalToolbarActions();
-      const fromIndex = ordered.findIndex((entry) => entry.id === draggedId);
-      const targetIndex = ordered.findIndex((entry) => entry.id === action.id);
-
-      if (fromIndex < 0 || targetIndex < 0) {
-        return;
-      }
-
-      const [moved] = ordered.splice(fromIndex, 1);
-      let insertIndex = ordered.findIndex((entry) => entry.id === action.id);
-      const rect = item.getBoundingClientRect();
-      const insertAfter = event.clientY > rect.top + (rect.height / 2);
-
-      if (insertAfter) {
-        insertIndex += 1;
-      }
-
-      ordered.splice(Math.max(0, insertIndex), 0, moved);
-      state.settings.terminalActions = ordered;
-      state.editingTerminalActionId = moved.id;
-      await saveSettings();
-      renderTerminalActionList();
-      renderTerminalToolbarActions();
-      showToast('Toolbar order updated.', 2600, 'success');
-    });
-
-    item.addEventListener('dragend', () => {
-      state.draggingTerminalActionId = null;
-      $$('.terminal-action-list-item').forEach((entry) => {
-        entry.classList.remove('dragging', 'drag-over');
-      });
-    });
-
     list.appendChild(item);
   });
 
   if (!actions.length) {
     const empty = document.createElement('div');
     empty.className = 'manage-command-empty';
-    empty.textContent = 'No terminal toolbar items yet.';
+    empty.textContent = 'No terminal actions yet.';
     list.appendChild(empty);
   }
 
@@ -7473,181 +4979,24 @@ function updateTerminalActionMoveButtons() {
   $('#terminal-action-move-down') && ($('#terminal-action-move-down').disabled = !hasSelection || index < 0 || index >= actions.length - 1);
 }
 
-function populateTerminalActionProfileDropdown(selectedProfileId = '') {
-  const select = $('#terminal-action-profile');
-
-  if (!select) {
-    return;
-  }
-
-  const profiles = getTerminalProfiles();
-  const requested = String(selectedProfileId || select.value || '').trim();
-  select.innerHTML = '';
-
-  profiles.forEach((profile) => {
-    const option = document.createElement('option');
-    option.value = profile.id;
-    option.textContent = `${profile.icon || 'TERM'}  ${profile.name}`;
-    select.appendChild(option);
-  });
-
-  if (requested && !profiles.some((profile) => profile.id === requested)) {
-    const missing = document.createElement('option');
-    missing.value = requested;
-    missing.textContent = `Missing profile — item stays hidden (${requested})`;
-    select.appendChild(missing);
-  }
-
-  select.value = requested && Array.from(select.options).some((option) => option.value === requested)
-    ? requested
-    : (profiles[0]?.id || '');
-}
-
-function updateTerminalActionShortcutHelp() {
-  const input = $('#terminal-action-shortcut');
-  const help = $('#terminal-action-shortcut-help');
-
-  if (!input || !help) {
-    return;
-  }
-
-  const raw = input.value.trim();
-
-  if (!raw) {
-    help.textContent = 'Use Ctrl/Alt/Shift plus a key. Duplicate and reserved shortcuts are blocked.';
-    help.classList.remove('field-warning');
-    return;
-  }
-
-  const normalized = normalizeTerminalToolbarShortcut(raw);
-
-  if (!normalized) {
-    help.textContent = 'Shortcut needs a modifier and a key, for example Ctrl+Alt+L.';
-    help.classList.add('field-warning');
-    return;
-  }
-
-  const conflict = getTerminalToolbarShortcutConflict(normalized, state.editingTerminalActionId || '');
-
-  if (conflict?.reserved) {
-    help.textContent = `${normalized} is reserved by Advance Terminal / terminal clipboard behavior.`;
-    help.classList.add('field-warning');
-    return;
-  }
-
-  if (conflict?.action) {
-    help.textContent = `${normalized} is already used by "${conflict.action.name}".`;
-    help.classList.add('field-warning');
-    return;
-  }
-
-  help.textContent = `Shortcut: ${normalized}`;
-  help.classList.remove('field-warning');
-}
-
 function updateTerminalActionFormVisibility() {
-  const itemType = $('#terminal-action-item-type')?.value || 'action';
   const kind = $('#terminal-action-kind')?.value || 'clear';
-  const visibility = $('#terminal-action-visibility')?.value || 'all';
-  const isSeparator = itemType === 'separator';
-  const hasText = !isSeparator && ['sendText', 'typeText'].includes(kind);
-  const textRow = $('#terminal-action-text-row');
-  const textLabel = $('#terminal-action-text-label');
-  const textArea = $('#terminal-action-text');
-  const textHelp = $('#terminal-action-text-help');
-
-  $('#terminal-action-name-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-kind-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-group-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-dropdown-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-shortcut-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-custom-icon-row')?.classList.toggle('hidden', isSeparator || ($('#terminal-action-selected-icon')?.value || 'terminal') !== 'custom');
-  $('#terminal-action-color-row')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-icon-block')?.classList.toggle('hidden', isSeparator);
-  $('#terminal-action-profile-row')?.classList.toggle('hidden', visibility !== 'profile');
-  textRow?.classList.toggle('hidden', !hasText);
-
-  if (visibility === 'profile') {
-    populateTerminalActionProfileDropdown($('#terminal-action-profile')?.value || '');
-  }
-
-  if (kind === 'typeText') {
-    if (textLabel) {
-      textLabel.textContent = 'Text to type without Enter';
-    }
-    if (textArea) {
-      textArea.placeholder = 'Example: php artisan ';
-    }
-    if (textHelp) {
-      textHelp.textContent = 'Writes the text into the active terminal without pressing Enter. Line breaks are converted to spaces.';
-    }
-  } else {
-    if (textLabel) {
-      textLabel.textContent = 'Text or command to send';
-    }
-    if (textArea) {
-      textArea.placeholder = 'Example: php artisan optimize:clear';
-    }
-    if (textHelp) {
-      textHelp.textContent = 'Send Command + Enter executes the text. Type Text Only writes text without pressing Enter.';
-    }
-  }
-
-  updateTerminalActionShortcutHelp();
-}
-
-function updateTerminalActionCustomizationControls() {
-  const itemType = $('#terminal-action-item-type')?.value || 'action';
-  const icon = $('#terminal-action-selected-icon')?.value || 'terminal';
-  const customIconRow = $('#terminal-action-custom-icon-row');
-  const colorEnabled = $('#terminal-action-color-enabled');
-  const colorInput = $('#terminal-action-color');
-  const colorValue = $('#terminal-action-color-value');
-  const useCustomColor = itemType !== 'separator' && Boolean(colorEnabled?.checked);
-
-  customIconRow?.classList.toggle('hidden', itemType === 'separator' || icon !== 'custom');
-
-  if (colorInput) {
-    colorInput.disabled = !useCustomColor;
-  }
-
-  if (colorValue) {
-    colorValue.textContent = useCustomColor ? (colorInput?.value || '#a78bfa').toUpperCase() : 'Default';
-  }
-
-  updateTerminalActionFormVisibility();
+  $('#terminal-action-text-row')?.classList.toggle('hidden', kind !== 'sendText');
 }
 
 function fillTerminalActionForm(action) {
   const normalized = normalizeTerminalToolbarAction(action || {
-    itemType: 'action',
     name: 'New Action',
     action: 'sendText',
     icon: 'terminal',
-    customIcon: '',
-    color: '',
     text: '',
-    enabled: true,
-    group: '',
-    dropdown: '',
-    shortcut: '',
-    visibility: 'all',
-    profileId: ''
+    enabled: true
   });
 
-  $('#terminal-action-item-type').value = normalized.itemType;
-  $('#terminal-action-name').value = normalized.itemType === 'separator' ? '' : normalized.name;
+  $('#terminal-action-name').value = normalized.name;
   $('#terminal-action-kind').value = normalized.action;
   $('#terminal-action-text').value = normalized.text;
   $('#terminal-action-enabled').checked = normalized.enabled !== false;
-  $('#terminal-action-group').value = normalized.group || '';
-  $('#terminal-action-dropdown').value = normalized.dropdown || '';
-  $('#terminal-action-shortcut').value = normalizeTerminalToolbarShortcut(normalized.shortcut) || normalized.shortcut || '';
-  $('#terminal-action-visibility').value = normalized.visibility || 'all';
-  populateTerminalActionProfileDropdown(normalized.profileId || '');
-  $('#terminal-action-custom-icon').value = normalized.customIcon || '';
-  $('#terminal-action-color-enabled').checked = Boolean(normalized.color);
-  $('#terminal-action-color').value = normalized.color || '#a78bfa';
 
   let hiddenIcon = $('#terminal-action-selected-icon');
   if (!hiddenIcon) {
@@ -7658,8 +5007,8 @@ function fillTerminalActionForm(action) {
   }
 
   hiddenIcon.value = normalized.icon;
+  updateTerminalActionFormVisibility();
   renderTerminalActionIconPicker(normalized.icon);
-  updateTerminalActionCustomizationControls();
   updateTerminalActionMoveButtons();
 }
 
@@ -7667,134 +5016,47 @@ function loadTerminalActionIntoManager(actionId) {
   state.editingTerminalActionId = actionId || null;
   fillTerminalActionForm(getSelectedTerminalAction());
   renderTerminalActionList();
-
-  if ($('#terminal-action-item-type')?.value === 'separator') {
-    $('#terminal-action-visibility')?.focus();
-  } else {
-    $('#terminal-action-name')?.focus();
-  }
+  $('#terminal-action-name')?.focus();
 }
 
 function newTerminalActionFromManager() {
   state.editingTerminalActionId = null;
   fillTerminalActionForm({
-    itemType: 'action',
     name: 'New Action',
     action: 'sendText',
     icon: 'terminal',
-    customIcon: '',
-    color: '',
     text: '',
-    enabled: true,
-    group: '',
-    dropdown: '',
-    shortcut: '',
-    visibility: 'all',
-    profileId: ''
+    enabled: true
   });
   renderTerminalActionList();
   $('#terminal-action-name')?.select();
 }
 
-function newTerminalSeparatorFromManager() {
-  state.editingTerminalActionId = null;
-  fillTerminalActionForm({
-    itemType: 'separator',
-    name: 'Separator',
-    action: 'clear',
-    icon: 'lines',
-    customIcon: '',
-    color: '',
-    text: '',
-    enabled: true,
-    group: '',
-    dropdown: '',
-    shortcut: '',
-    visibility: 'all',
-    profileId: ''
-  });
-  renderTerminalActionList();
-  $('#terminal-action-visibility')?.focus();
-}
-
-async function saveTerminalActionFromManager(options = {}) {
-  const itemType = $('#terminal-action-item-type')?.value === 'separator' ? 'separator' : 'action';
-  const name = itemType === 'separator' ? 'Separator' : $('#terminal-action-name').value.trim();
+async function saveTerminalActionFromManager() {
+  const name = $('#terminal-action-name').value.trim();
   const actionKind = $('#terminal-action-kind').value;
   const text = $('#terminal-action-text').value.trim();
   const icon = $('#terminal-action-selected-icon')?.value || 'terminal';
-  const customIcon = $('#terminal-action-custom-icon')?.value.trim() || '';
-  const color = itemType === 'action' && $('#terminal-action-color-enabled')?.checked
-    ? ($('#terminal-action-color')?.value || '')
-    : '';
   const enabled = $('#terminal-action-enabled').checked;
-  const group = itemType === 'action' ? $('#terminal-action-group')?.value.trim() || '' : '';
-  const dropdown = itemType === 'action' ? $('#terminal-action-dropdown')?.value.trim() || '' : '';
-  const shortcutRaw = itemType === 'action' ? $('#terminal-action-shortcut')?.value.trim() || '' : '';
-  const shortcut = shortcutRaw ? normalizeTerminalToolbarShortcut(shortcutRaw) : '';
-  const visibility = $('#terminal-action-visibility')?.value || 'all';
-  const profileId = visibility === 'profile' ? String($('#terminal-action-profile')?.value || '').trim() : '';
 
-  if (itemType === 'action' && !name) {
+  if (!name) {
     showToast('Terminal action needs a name.');
-    return false;
+    return;
   }
 
-  if (itemType === 'action' && ['sendText', 'typeText'].includes(actionKind) && !text) {
-    showToast(`${terminalActionKindLabel(actionKind)} needs text.`);
-    return false;
-  }
-
-  if (itemType === 'action' && icon === 'custom' && !customIcon) {
-    showToast('Enter a custom icon, or choose a built-in icon.');
-    $('#terminal-action-custom-icon')?.focus();
-    return false;
-  }
-
-  if (shortcutRaw && !shortcut) {
-    showToast('Keyboard shortcut needs a modifier and a key, for example Ctrl+Alt+L.', 5000, 'warning');
-    $('#terminal-action-shortcut')?.focus();
-    return false;
-  }
-
-  const shortcutConflict = shortcut
-    ? getTerminalToolbarShortcutConflict(shortcut, state.editingTerminalActionId || '')
-    : null;
-
-  if (shortcutConflict?.reserved) {
-    showToast(`${shortcut} is reserved and cannot be assigned to a toolbar action.`, 5500, 'warning');
-    $('#terminal-action-shortcut')?.focus();
-    return false;
-  }
-
-  if (shortcutConflict?.action) {
-    showToast(`${shortcut} is already assigned to "${shortcutConflict.action.name}".`, 5500, 'warning');
-    $('#terminal-action-shortcut')?.focus();
-    return false;
-  }
-
-  if (visibility === 'profile' && !profileId) {
-    showToast('Choose a Terminal Profile for this profile-specific toolbar item.', 5000, 'warning');
-    $('#terminal-action-profile')?.focus();
-    return false;
+  if (actionKind === 'sendText' && !text) {
+    showToast('Send Text action needs text or a command to send.');
+    return;
   }
 
   const actions = getTerminalToolbarActions();
   const action = normalizeTerminalToolbarAction({
     id: state.editingTerminalActionId || randomId('term-action'),
-    itemType,
     name,
-    action: itemType === 'separator' ? 'clear' : actionKind,
-    icon: itemType === 'separator' ? 'lines' : icon,
-    customIcon: itemType === 'separator' ? '' : customIcon,
-    color,
-    text: itemType === 'separator' ? '' : text,
-    enabled,
-    group: dropdown ? '' : group,
-    dropdown,
-    shortcut,
-    visibility,
-    profileId
+    action: actionKind,
+    icon,
+    text,
+    enabled
   });
 
   const index = actions.findIndex((item) => item.id === action.id);
@@ -7811,43 +5073,22 @@ async function saveTerminalActionFromManager(options = {}) {
   renderTerminalActionList();
   fillTerminalActionForm(action);
   renderTerminalToolbarActions();
-
-  if (options.showToast !== false) {
-    showToast(options.toastMessage || `${itemType === 'separator' ? 'Separator' : 'Terminal action'} saved and applied.`);
-  }
-
-  return action;
-}
-
-async function saveTerminalToolbarFromManager() {
-  const saved = await saveTerminalActionFromManager({
-    showToast: false
-  });
-
-  if (!saved) {
-    return;
-  }
-
-  renderTerminalToolbarActions();
-  showToast('Toolbar saved and applied instantly.', 4000, 'success');
+  showToast('Terminal action saved.');
 }
 
 async function duplicateTerminalActionFromManager() {
   const selected = getSelectedTerminalAction();
 
   if (!selected) {
-    showToast('Select a terminal toolbar item to duplicate.');
+    showToast('Select a terminal action to duplicate.');
     return;
   }
 
-  const duplicate = normalizeTerminalToolbarAction({
+  const duplicate = {
     ...selected,
     id: randomId('term-action'),
-    name: selected.itemType === 'separator'
-      ? 'Separator'
-      : `${selected.name || 'Terminal Action'} Copy`,
-    shortcut: ''
-  });
+    name: `${selected.name || 'Terminal Action'} Copy`
+  };
 
   state.settings.terminalActions = [...getTerminalToolbarActions(), duplicate];
   await saveSettings();
@@ -7855,19 +5096,18 @@ async function duplicateTerminalActionFromManager() {
   renderTerminalActionList();
   fillTerminalActionForm(duplicate);
   renderTerminalToolbarActions();
-  showToast(selected.itemType === 'separator' ? 'Separator duplicated.' : 'Terminal action duplicated.');
+  showToast('Terminal action duplicated.');
 }
 
 async function deleteTerminalActionFromManager() {
   const selected = getSelectedTerminalAction();
 
   if (!selected) {
-    showToast('Select a terminal toolbar item to delete.');
+    showToast('Select a terminal action to delete.');
     return;
   }
 
-  const label = selected.itemType === 'separator' ? 'separator' : `terminal action "${selected.name || 'selected action'}"`;
-  const confirmed = confirm(`Delete ${label}?`);
+  const confirmed = confirm(`Delete terminal action "${selected.name || 'selected action'}"?`);
 
   if (!confirmed) {
     return;
@@ -7880,22 +5120,14 @@ async function deleteTerminalActionFromManager() {
   state.editingTerminalActionId = next?.id || null;
   renderTerminalActionList();
   fillTerminalActionForm(next || {
-    itemType: 'action',
     name: 'New Action',
     action: 'sendText',
     icon: 'terminal',
-    customIcon: '',
-    color: '',
     text: '',
-    enabled: true,
-    group: '',
-    dropdown: '',
-    shortcut: '',
-    visibility: 'all',
-    profileId: ''
+    enabled: true
   });
   renderTerminalToolbarActions();
-  showToast('Terminal toolbar item deleted.');
+  showToast('Terminal action deleted.');
 }
 
 async function moveTerminalActionFromManager(direction) {
@@ -7903,7 +5135,7 @@ async function moveTerminalActionFromManager(direction) {
   const index = actions.findIndex((item) => item.id === state.editingTerminalActionId);
 
   if (index < 0) {
-    showToast('Select a terminal toolbar item to move.');
+    showToast('Select a terminal action to move.');
     return;
   }
 
@@ -7919,17 +5151,17 @@ async function moveTerminalActionFromManager(direction) {
   await saveSettings();
   renderTerminalActionList();
   renderTerminalToolbarActions();
-  showToast('Toolbar order updated and applied.');
+  showToast('Terminal action order updated.');
 }
 
 async function resetTerminalActionsToDefault() {
-  const confirmed = confirm('Reset Terminal Actions to the default toolbar?');
+  const confirmed = confirm('Reset Terminal Actions to default toolbar actions?');
 
   if (!confirmed) {
     return;
   }
 
-  state.settings.terminalActions = getDefaultTerminalActions().map(normalizeTerminalToolbarAction);
+  state.settings.terminalActions = getDefaultTerminalActions();
   await saveSettings();
   state.editingTerminalActionId = state.settings.terminalActions[0]?.id || null;
   renderTerminalActionList();
@@ -8013,7 +5245,7 @@ function getCommandCategories() {
   const categories = [...DEFAULT_COMMAND_CATEGORIES];
   const seen = new Set(categories.map((item) => item.toLowerCase()));
 
-  (state.settings ? getCommands() : []).forEach((command) => {
+  getCommands().forEach((command) => {
     const category = getCommandCategory(command);
     const key = category.toLowerCase();
 
@@ -8478,31 +5710,31 @@ async function sendCommandToActiveTerminal(commandValue) {
 
   if (!template) {
     showToast('Command shortcut is empty.');
-    return;
+    return false;
   }
 
   if (!session || session.closed) {
     showToast('Open or connect a terminal first.');
     setActiveView('terminal');
-    return;
+    return false;
   }
 
   if (!guardTerminalAction(session, commandConfig.name || 'Run Command', 'sendText')) {
-    return;
+    return false;
   }
 
   const resolved = resolveCommandVariables(template);
 
   if (!resolved) {
     showToast('Command shortcut cancelled.', 3500, 'warning');
-    return;
+    return false;
   }
 
   const command = String(resolved.command || '').trim();
 
   if (!command) {
     showToast('Command shortcut is empty.');
-    return;
+    return false;
   }
 
   const allowed = await confirmRiskyCommandIfNeeded(commandConfig, {
@@ -8511,7 +5743,7 @@ async function sendCommandToActiveTerminal(commandValue) {
   });
 
   if (!allowed) {
-    return;
+    return false;
   }
 
   const payload = `${command.replace(/\r?\n/g, '\r')}\r`;
@@ -8523,7 +5755,7 @@ async function sendCommandToActiveTerminal(commandValue) {
 
   if (sshLockResult.blocked) {
     showSshPathLockBlocked(session, sshLockResult.reason);
-    return;
+    return false;
   }
 
   applySshLockedLocationResult(session, sshLockResult);
@@ -8547,6 +5779,7 @@ async function sendCommandToActiveTerminal(commandValue) {
 
   appendLiveConsole(`Command shortcut sent to ${session.server?.name || 'active terminal'}: ${logDescription}`, 'command');
   showToast(`Sent command shortcut: ${logDescription}`);
+  return true;
 }
 
 
@@ -8591,6 +5824,23 @@ function renderConnectionGroupOptions() {
   }
 
   select.value = state.connectionGroupFilter || 'all';
+}
+
+// Toggle only the visual group picker; existing select and filtering logic remain unchanged.
+function setConnectionGroupFilterPopoverOpen(open, restoreFocus = false) {
+  const popover = $('#connection-group-filter-popover');
+  const toggle = $('#connection-group-filter-toggle');
+  if (!popover || !toggle) return;
+
+  const shouldOpen = Boolean(open);
+  popover.hidden = !shouldOpen;
+  toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  if (shouldOpen) {
+    renderConnectionGroupOptions();
+    $('#connection-group-filter')?.focus();
+  } else if (restoreFocus) {
+    toggle.focus();
+  }
 }
 
 function updateConnectionGroupDatalist() {
@@ -8695,6 +5945,7 @@ function applyConnectionsPanelCollapsed(collapsed = state.connectionsPanelCollap
   if (button) {
     button.setAttribute('aria-expanded', state.connectionsPanelCollapsed ? 'false' : 'true');
     button.title = state.connectionsPanelCollapsed ? 'Expand connections panel' : 'Collapse connections panel';
+    button.setAttribute('aria-label', button.title);
     button.textContent = state.connectionsPanelCollapsed ? '›' : '‹';
   }
 
@@ -9447,6 +6698,12 @@ function showTerminalSession(session) {
     return;
   }
 
+  // A connection finishing in the background must not select its tab again,
+  // nor pull the user away from Settings or Reports or close another dialog.
+  if (state.activeTerminalId !== session.terminalId || state.activeView !== 'terminal') {
+    updateTerminalTabWorkingIndicator(session);
+    return;
+  }
   closeAddConnectionModal();
   setActiveView('terminal', 'terminal');
   activateTerminal(session.terminalId);
@@ -9702,1423 +6959,12 @@ function selectServer(serverId) {
 }
 
 
-
-function getTerminalGroup(groupId) {
-  return groupId ? state.terminalGroups.get(groupId) || null : null;
-}
-
-function getTerminalGroupForSession(sessionOrId) {
-  const session = typeof sessionOrId === 'string'
-    ? state.terminals.get(sessionOrId)
-    : sessionOrId;
-
-  if (!session) {
-    return null;
-  }
-
-  return getTerminalGroup(session.groupId);
-}
-
-function collectSplitTerminalIds(node, result = []) {
-  if (!node) {
-    return result;
-  }
-
-  if (node.type === 'leaf') {
-    if (node.terminalId) {
-      result.push(node.terminalId);
-    }
-    return result;
-  }
-
-  collectSplitTerminalIds(node.first, result);
-  collectSplitTerminalIds(node.second, result);
-  return result;
-}
-
-function splitGroupTerminalIds(group) {
-  return group ? collectSplitTerminalIds(group.root, []) : [];
-}
-
-function getFirstTerminalIdInGroup(group) {
-  return splitGroupTerminalIds(group).find((terminalId) => state.terminals.has(terminalId)) || null;
-}
-
-function terminalGroupPaneCount(group) {
-  return splitGroupTerminalIds(group)
-    .filter((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      return session && !session.closed;
-    })
-    .length;
-}
-
-function createSplitLeaf(terminalId) {
-  return {
-    type: 'leaf',
-    terminalId
-  };
-}
-
-function createSplitNode(direction, first, second, ratio = 0.5) {
-  return {
-    type: 'split',
-    id: randomId('split'),
-    direction: direction === 'column' ? 'column' : 'row',
-    ratio: Math.min(0.85, Math.max(0.15, Number(ratio) || 0.5)),
-    first,
-    second
-  };
-}
-
-function ensureTerminalGroupContainer(group) {
-  if (!group) {
-    return null;
-  }
-
-  if (group.container?.isConnected) {
-    return group.container;
-  }
-
-  const container = document.createElement('div');
-  container.className = 'terminal-split-group';
-  container.dataset.groupId = group.id;
-  $('#terminal-host')?.appendChild(container);
-  group.container = container;
-  return container;
-}
-
-function isTerminalSessionVisible(session) {
-  if (!session || session.closed) {
-    return false;
-  }
-
-  const group = getTerminalGroupForSession(session);
-  return Boolean(group && group.id === state.activeTerminalGroupId && group.container?.classList.contains('active'));
-}
-
-function scheduleActiveTerminalGroupFit() {
-  if (state.terminalFitAnimationFrame) {
-    cancelAnimationFrame(state.terminalFitAnimationFrame);
-  }
-
-  state.terminalFitAnimationFrame = requestAnimationFrame(() => {
-    state.terminalFitAnimationFrame = null;
-    const group = getTerminalGroup(state.activeTerminalGroupId);
-
-    splitGroupTerminalIds(group).forEach((terminalId) => {
-      fitTerminalSessionNow(state.terminals.get(terminalId));
-    });
-  });
-}
-
-function installSplitDividerDrag(divider, splitElement, node) {
-  if (!divider || !splitElement || !node) {
-    return;
-  }
-
-  divider.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    divider.setPointerCapture?.(event.pointerId);
-    document.body.classList.add('terminal-split-resizing');
-
-    state.splitResize = {
-      pointerId: event.pointerId,
-      divider,
-      splitElement,
-      node
-    };
-  });
-
-  divider.addEventListener('pointermove', (event) => {
-    const drag = state.splitResize;
-
-    if (!drag || drag.pointerId !== event.pointerId || drag.divider !== divider) {
-      return;
-    }
-
-    const rect = splitElement.getBoundingClientRect();
-    let ratio;
-
-    if (node.direction === 'column') {
-      ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
-    } else {
-      ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
-    }
-
-    node.ratio = Math.min(0.85, Math.max(0.15, ratio));
-    const first = splitElement.children[0];
-    const second = splitElement.children[2];
-
-    if (node.direction === 'column') {
-      splitElement.style.gridTemplateRows = `${node.ratio}fr 6px ${1 - node.ratio}fr`;
-      splitElement.style.gridTemplateColumns = 'minmax(0, 1fr)';
-    } else {
-      splitElement.style.gridTemplateColumns = `${node.ratio}fr 6px ${1 - node.ratio}fr`;
-      splitElement.style.gridTemplateRows = 'minmax(0, 1fr)';
-    }
-
-    first?.classList.add('terminal-split-dragging');
-    second?.classList.add('terminal-split-dragging');
-    scheduleActiveTerminalGroupFit();
-  });
-
-  const finish = (event) => {
-    const drag = state.splitResize;
-
-    if (!drag || drag.divider !== divider || (event && drag.pointerId !== event.pointerId)) {
-      return;
-    }
-
-    try {
-      divider.releasePointerCapture?.(drag.pointerId);
-    } catch (_) {
-      // Ignore pointer-capture cleanup failure.
-    }
-
-    state.splitResize = null;
-    document.body.classList.remove('terminal-split-resizing');
-    splitElement.querySelectorAll('.terminal-split-dragging').forEach((element) => {
-      element.classList.remove('terminal-split-dragging');
-    });
-    scheduleActiveTerminalGroupFit();
-  };
-
-  divider.addEventListener('pointerup', finish);
-  divider.addEventListener('pointercancel', finish);
-  divider.addEventListener('lostpointercapture', finish);
-}
-
-function buildTerminalSplitNode(group, node) {
-  if (!group || !node) {
-    return document.createElement('div');
-  }
-
-  if (node.type === 'leaf') {
-    const leaf = document.createElement('div');
-    leaf.className = 'terminal-split-leaf';
-    leaf.dataset.terminalId = node.terminalId;
-
-    const session = state.terminals.get(node.terminalId);
-    if (!session) {
-      leaf.classList.add('terminal-split-leaf-missing');
-      return leaf;
-    }
-
-    const header = document.createElement('div');
-    header.className = 'terminal-split-pane-header';
-
-    const label = document.createElement('button');
-    label.type = 'button';
-    label.className = 'terminal-split-pane-label';
-    label.title = 'Focus this terminal pane';
-    label.textContent = session.server?.name || 'Terminal';
-    label.addEventListener('click', () => activateTerminalAndFocus(session.terminalId));
-
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'terminal-split-pane-close';
-    close.title = 'Close this pane';
-    close.setAttribute('aria-label', `Close ${session.server?.name || 'terminal'} pane`);
-    close.textContent = '×';
-    close.addEventListener('click', (event) => {
-      event.stopPropagation();
-      closeTerminalSession(session.terminalId);
-    });
-
-    header.append(label, close);
-    leaf.appendChild(header);
-    leaf.appendChild(session.pane);
-    return leaf;
-  }
-
-  const split = document.createElement('div');
-  split.className = `terminal-split-node terminal-split-${node.direction === 'column' ? 'column' : 'row'}`;
-  split.dataset.splitId = node.id || '';
-  const first = buildTerminalSplitNode(group, node.first);
-  const divider = document.createElement('div');
-  divider.className = `terminal-split-divider terminal-split-divider-${node.direction === 'column' ? 'column' : 'row'}`;
-  divider.setAttribute('role', 'separator');
-  divider.setAttribute('aria-orientation', node.direction === 'column' ? 'horizontal' : 'vertical');
-  divider.title = 'Drag to resize terminal panes';
-  const second = buildTerminalSplitNode(group, node.second);
-
-  if (node.direction === 'column') {
-    split.style.gridTemplateRows = `${node.ratio}fr 6px ${1 - node.ratio}fr`;
-    split.style.gridTemplateColumns = 'minmax(0, 1fr)';
-  } else {
-    split.style.gridTemplateColumns = `${node.ratio}fr 6px ${1 - node.ratio}fr`;
-    split.style.gridTemplateRows = 'minmax(0, 1fr)';
-  }
-
-  split.append(first, divider, second);
-  installSplitDividerDrag(divider, split, node);
-  return split;
-}
-
-function renderTerminalGroupLayout(group) {
-  if (!group) {
-    return;
-  }
-
-  const container = ensureTerminalGroupContainer(group);
-  const layout = buildTerminalSplitNode(group, group.root);
-  const paneCount = splitGroupTerminalIds(group).length;
-
-  container.replaceChildren(layout);
-  container.classList.toggle('is-split', paneCount > 1);
-  container.classList.toggle('active', group.id === state.activeTerminalGroupId);
-
-  splitGroupTerminalIds(group).forEach((terminalId) => {
-    const session = state.terminals.get(terminalId);
-
-    if (!session?.pane) {
-      return;
-    }
-
-    session.pane.classList.toggle('active', terminalId === state.activeTerminalId);
-    session.pane.classList.toggle('split-pane', paneCount > 1);
-  });
-
-  requestAnimationFrame(() => {
-    if (group.id === state.activeTerminalGroupId) {
-      scheduleActiveTerminalGroupFit();
-    }
-  });
-}
-
-function syncTerminalGroupVisibility() {
-  state.terminalGroups.forEach((group) => {
-    const active = group.id === state.activeTerminalGroupId;
-    const container = ensureTerminalGroupContainer(group);
-    container.classList.toggle('active', active);
-
-    splitGroupTerminalIds(group).forEach((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      session?.pane?.classList.toggle('active', active && terminalId === state.activeTerminalId);
-    });
-  });
-}
-
-function createStandaloneTerminalGroup(session) {
-  if (!session) {
-    return null;
-  }
-
-  const group = {
-    id: randomId('tab'),
-    root: createSplitLeaf(session.terminalId),
-    activeTerminalId: session.terminalId,
-    title: '',
-    color: '',
-    pinned: false,
-    container: null
-  };
-
-  session.groupId = group.id;
-  state.terminalGroups.set(group.id, group);
-  renderTerminalGroupLayout(group);
-  return group;
-}
-
-function replaceTerminalSplitLeaf(node, terminalId, replacement) {
-  if (!node) {
-    return node;
-  }
-
-  if (node.type === 'leaf') {
-    return node.terminalId === terminalId ? replacement : node;
-  }
-
-  node.first = replaceTerminalSplitLeaf(node.first, terminalId, replacement);
-  node.second = replaceTerminalSplitLeaf(node.second, terminalId, replacement);
-  return node;
-}
-
-function removeTerminalSplitLeaf(node, terminalId) {
-  if (!node) {
-    return null;
-  }
-
-  if (node.type === 'leaf') {
-    return node.terminalId === terminalId ? null : node;
-  }
-
-  const first = removeTerminalSplitLeaf(node.first, terminalId);
-  const second = removeTerminalSplitLeaf(node.second, terminalId);
-
-  if (!first) return second;
-  if (!second) return first;
-
-  node.first = first;
-  node.second = second;
-  return node;
-}
-
-function removeTerminalFromSplitGroup(terminalId, groupId = '') {
-  const group = getTerminalGroup(groupId) || getTerminalGroupForSession(terminalId);
-
-  if (!group) {
-    return null;
-  }
-
-  group.root = removeTerminalSplitLeaf(group.root, terminalId);
-
-  if (!group.root) {
-    group.container?.remove();
-    state.terminalGroups.delete(group.id);
-
-    if (state.activeTerminalGroupId === group.id) {
-      state.activeTerminalGroupId = null;
-    }
-
-    return null;
-  }
-
-  if (group.activeTerminalId === terminalId || !state.terminals.has(group.activeTerminalId)) {
-    group.activeTerminalId = getFirstTerminalIdInGroup(group);
-  }
-
-  renderTerminalGroupLayout(group);
-  return group;
-}
-
-function attachTerminalAsSplit(baseTerminalId, newTerminalId, direction = 'row') {
-  const baseSession = state.terminals.get(baseTerminalId);
-  const newSession = state.terminals.get(newTerminalId);
-  const baseGroup = getTerminalGroupForSession(baseSession);
-  const newGroup = getTerminalGroupForSession(newSession);
-
-  if (!baseSession || !newSession || !baseGroup || !newGroup || baseGroup.id === newGroup.id) {
-    return false;
-  }
-
-  if (splitGroupTerminalIds(baseGroup).length >= 4) {
-    showToast('A split tab can contain up to 4 terminal panes.', 4500, 'warning');
-    return false;
-  }
-
-  newGroup.container?.remove();
-  state.terminalGroups.delete(newGroup.id);
-
-  newSession.groupId = baseGroup.id;
-  const replacement = createSplitNode(
-    direction,
-    createSplitLeaf(baseTerminalId),
-    createSplitLeaf(newTerminalId),
-    0.5
-  );
-  baseGroup.root = replaceTerminalSplitLeaf(baseGroup.root, baseTerminalId, replacement);
-  baseGroup.activeTerminalId = newTerminalId;
-  state.activeTerminalGroupId = baseGroup.id;
-  state.activeTerminalId = newTerminalId;
-
-  renderTerminalGroupLayout(baseGroup);
-  syncTerminalGroupVisibility();
-  renderTerminalTabs();
-  updateCurrentTabFooter();
-  updateTerminalLocationHeader(newSession);
-  setTerminalHeaderTitle(newSession.server?.name || 'Terminal');
-  setTerminalStatus(newSession.status || 'connected');
-
-  appendActivityFeedEvent(
-    `Split terminal ${direction === 'column' ? 'down' : 'right'}: ${newSession.server?.name || newTerminalId}.`,
-    'action',
-    { dedupeMs: 900 }
-  );
-
-  requestAnimationFrame(() => {
-    scheduleActiveTerminalGroupFit();
-    focusTerminal(newSession);
-  });
-
-  return true;
-}
-
-function focusNextSplitPane() {
-  const group = getTerminalGroup(state.activeTerminalGroupId);
-  const terminalIds = splitGroupTerminalIds(group)
-    .filter((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      return session && !session.closed;
-    });
-
-  if (terminalIds.length < 2) {
-    showToast('The active tab has only one terminal pane.', 3000, 'info');
-    return false;
-  }
-
-  const currentIndex = Math.max(0, terminalIds.indexOf(state.activeTerminalId));
-  const nextTerminalId = terminalIds[(currentIndex + 1) % terminalIds.length];
-  activateTerminalAndFocus(nextTerminalId);
-  return true;
-}
-
-function swapSplitTerminalIds(node, firstTerminalId, secondTerminalId) {
-  if (!node) {
-    return;
-  }
-
-  if (node.type === 'leaf') {
-    if (node.terminalId === firstTerminalId) {
-      node.terminalId = secondTerminalId;
-    } else if (node.terminalId === secondTerminalId) {
-      node.terminalId = firstTerminalId;
-    }
-    return;
-  }
-
-  swapSplitTerminalIds(node.first, firstTerminalId, secondTerminalId);
-  swapSplitTerminalIds(node.second, firstTerminalId, secondTerminalId);
-}
-
-function swapActiveSplitPaneWithNext() {
-  const group = getTerminalGroup(state.activeTerminalGroupId);
-  const terminalIds = splitGroupTerminalIds(group)
-    .filter((terminalId) => state.terminals.has(terminalId));
-
-  if (terminalIds.length < 2) {
-    showToast('The active tab has only one terminal pane.', 3000, 'info');
-    return false;
-  }
-
-  const currentIndex = Math.max(0, terminalIds.indexOf(state.activeTerminalId));
-  const nextTerminalId = terminalIds[(currentIndex + 1) % terminalIds.length];
-
-  swapSplitTerminalIds(group.root, state.activeTerminalId, nextTerminalId);
-  renderTerminalGroupLayout(group);
-  renderTerminalTabs();
-  appendActivityFeedEvent('Swapped terminal pane positions.', 'action', { dedupeMs: 800 });
-  return true;
-}
-
-
-function normalizeTerminalTabTitle(value) {
-  return String(value || '')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-}
-
-function normalizeTerminalTabColor(value) {
-  const color = String(value || '').trim();
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '';
-}
-
-function getTerminalGroupPrimarySession(group) {
-  if (!group) {
-    return null;
-  }
-
-  const terminalIds = splitGroupTerminalIds(group)
-    .filter((terminalId) => state.terminals.has(terminalId));
-  const terminalId = group.activeTerminalId && terminalIds.includes(group.activeTerminalId)
-    ? group.activeTerminalId
-    : terminalIds[0];
-
-  return terminalId ? state.terminals.get(terminalId) || null : null;
-}
-
-function getTerminalGroupDisplayTitle(group) {
-  const customTitle = normalizeTerminalTabTitle(group?.title);
-  if (customTitle) {
-    return customTitle;
-  }
-
-  return getTerminalGroupPrimarySession(group)?.server?.name || 'Terminal';
-}
-
-function captureTerminalGroupSnapshot(group) {
-  if (!group) {
-    return null;
-  }
-
-  const terminalIds = splitGroupTerminalIds(group)
-    .filter((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      return session && !session.closed;
-    });
-
-  if (!terminalIds.length) {
-    return null;
-  }
-
-  const sessions = [];
-  const sessionIndexByTerminalId = new Map();
-
-  terminalIds.forEach((terminalId) => {
-    const session = state.terminals.get(terminalId);
-    const descriptor = workspaceSessionFromTerminal(session);
-
-    if (!descriptor) {
-      return;
-    }
-
-    sessionIndexByTerminalId.set(terminalId, sessions.length);
-    sessions.push(descriptor);
-  });
-
-  if (!sessions.length) {
-    return null;
-  }
-
-  const root = serializeWorkspaceSplitNode(group.root, sessionIndexByTerminalId);
-  if (!root) {
-    return null;
-  }
-
-  const activeSessionIndex = sessionIndexByTerminalId.get(group.activeTerminalId);
-  return {
-    id: randomId('closed-tab'),
-    title: normalizeTerminalTabTitle(group.title),
-    color: normalizeTerminalTabColor(group.color),
-    pinned: group.pinned === true,
-    sessions,
-    root,
-    activeSessionIndex: Number.isInteger(activeSessionIndex) ? activeSessionIndex : 0,
-    closedAt: Date.now()
-  };
-}
-
-
-function terminalTabRootIdentity(node) {
-  if (!node || typeof node !== 'object') {
-    return null;
-  }
-
-  if (node.type === 'leaf') {
-    const sessionIndex = Number(node.sessionIndex);
-    return Number.isInteger(sessionIndex) ? { type: 'leaf', sessionIndex } : null;
-  }
-
-  return {
-    type: 'split',
-    direction: node.direction === 'column' ? 'column' : 'row',
-    first: terminalTabRootIdentity(node.first),
-    second: terminalTabRootIdentity(node.second)
-  };
-}
-
-function persistentTerminalTabSignature(snapshot) {
-  const sessions = (Array.isArray(snapshot?.sessions) ? snapshot.sessions : []).map((item) => ({
-    kind: item?.kind === 'profile' ? 'profile' : 'connection',
-    targetId: item?.kind === 'profile'
-      ? String(item?.profileId || '')
-      : String(item?.serverId || ''),
-    type: item?.type === 'remote' ? 'remote' : 'local'
-  }));
-
-  return JSON.stringify({
-    sessions,
-    root: terminalTabRootIdentity(snapshot?.root)
-  });
-}
-
-function persistentPinnedTerminalTabSnapshot(group) {
-  const snapshot = captureTerminalGroupSnapshot(group);
-
-  if (!snapshot) {
-    return null;
-  }
-
-  return {
-    sessions: snapshot.sessions,
-    root: snapshot.root,
-    activeSessionIndex: snapshot.activeSessionIndex,
-    title: snapshot.title,
-    color: snapshot.color,
-    pinned: true
-  };
-}
-
-function capturePersistentPinnedTerminalTabs() {
-  const snapshots = [];
-
-  state.terminalGroups.forEach((group) => {
-    if (group?.pinned !== true) {
-      return;
-    }
-
-    const snapshot = persistentPinnedTerminalTabSnapshot(group);
-    if (snapshot) snapshots.push(snapshot);
-  });
-
-  return snapshots.slice(0, 12);
-}
-
-function syncPinnedTerminalTabsSetting() {
-  if (!state.settings) {
-    return [];
-  }
-
-  const snapshots = capturePersistentPinnedTerminalTabs();
-  state.settings.pinnedTerminalTabs = snapshots;
-  return snapshots;
-}
-
-function queuePinnedTerminalTabsPersist({ immediate = false } = {}) {
-  if (!state.settings) {
-    return;
-  }
-
-  syncPinnedTerminalTabsSetting();
-
-  const savePromise = immediate
-    ? saveSettingsNow({ refresh: false })
-    : scheduleSettingsSave({ refresh: false, delay: 120 });
-
-  Promise.resolve(savePromise).catch((error) => {
-    appendActivityFeedEvent(
-      `Pinned terminal tabs could not be saved: ${error.message}`,
-      'warning',
-      { dedupeMs: 1600 }
-    );
-  });
-}
-
-async function restorePinnedTerminalTabsOnStartup() {
-  if (state.pinnedTabsStartupRestoreAttempted) {
-    return;
-  }
-
-  state.pinnedTabsStartupRestoreAttempted = true;
-  const snapshots = Array.isArray(state.settings?.pinnedTerminalTabs)
-    ? state.settings.pinnedTerminalTabs
-    : [];
-
-  if (!snapshots.length) {
-    return;
-  }
-
-  const existingBySignature = new Map();
-
-  state.terminalGroups.forEach((group) => {
-    const snapshot = captureTerminalGroupSnapshot(group);
-    if (!snapshot) return;
-
-    const signature = persistentTerminalTabSignature(snapshot);
-    const groups = existingBySignature.get(signature) || [];
-    groups.push(group);
-    existingBySignature.set(signature, groups);
-  });
-
-  let restoredCount = 0;
-  let matchedCount = 0;
-
-  for (const snapshot of snapshots) {
-    const signature = persistentTerminalTabSignature(snapshot);
-    const matchingGroups = existingBySignature.get(signature) || [];
-    const existingGroup = matchingGroups.shift() || null;
-
-    if (matchingGroups.length) {
-      existingBySignature.set(signature, matchingGroups);
-    } else {
-      existingBySignature.delete(signature);
-    }
-
-    if (existingGroup) {
-      existingGroup.pinned = true;
-      matchedCount += 1;
-      continue;
-    }
-
-    const restored = await restoreTerminalGroupSnapshot({
-      ...snapshot,
-      pinned: true
-    });
-
-    if (restored) {
-      restored.pinned = true;
-      restoredCount += 1;
-    }
-  }
-
-  reorderPinnedTerminalGroups();
-  renderTerminalTabs();
-  updateCurrentTabFooter();
-
-  if (restoredCount || matchedCount) {
-    appendActivityFeedEvent(
-      `Pinned tabs restored: ${matchedCount + restoredCount}.`,
-      'system',
-      { dedupeMs: 1200 }
-    );
-  }
-}
-
-function rememberClosedTerminalGroup(group) {
-  const snapshot = captureTerminalGroupSnapshot(group);
-
-  if (!snapshot) {
-    return false;
-  }
-
-  state.closedTerminalTabs = [
-    snapshot,
-    ...(Array.isArray(state.closedTerminalTabs) ? state.closedTerminalTabs : [])
-  ].slice(0, 12);
-
-  return true;
-}
-
-async function restoreTerminalGroupSnapshot(snapshot, { duplicate = false } = {}) {
-  if (!snapshot || !Array.isArray(snapshot.sessions) || !snapshot.sessions.length) {
-    showToast('No closed terminal tab is available to restore.', 3500, 'info');
-    return null;
-  }
-
-  if (state.workspaceRestoreInFlight) {
-    showToast('Wait for the current workspace restore to finish.', 4000, 'warning');
-    return null;
-  }
-
-  const openedByIndex = new Map();
-  const createdSessions = [];
-
-  for (let index = 0; index < snapshot.sessions.length; index += 1) {
-    const item = snapshot.sessions[index];
-    const target = workspaceSessionTarget(item);
-
-    if (!target) {
-      appendActivityFeedEvent(`Tab restore skipped missing target: ${item.label || 'terminal'}.`, 'warning', { dedupeMs: 900 });
-      continue;
-    }
-
-    let session = null;
-
-    if (target.kind === 'profile') {
-      session = await launchTerminalProfile(target.profile.id, {
-        workingDirectory: item.workingDirectory || ''
-      });
-    } else {
-      selectServer(target.server.id);
-      session = await connectSelectedServer({
-        workingDirectory: item.workingDirectory || ''
-      });
-    }
-
-    if (!session) {
-      continue;
-    }
-
-    openedByIndex.set(index, session.terminalId);
-    createdSessions.push(session);
-
-    if (session.server?.type === 'remote') {
-      const ready = await waitForWorkspaceSessionReady(session);
-      if (!ready) {
-        appendActivityFeedEvent(
-          `Tab restore stopped because ${session.server?.name || 'SSH'} did not become ready.`,
-          'warning',
-          { dedupeMs: 1200 }
-        );
-        break;
-      }
-    }
-
-    await delayWorkspace(40);
-  }
-
-  if (!openedByIndex.size) {
-    showToast('The terminal tab could not be restored because its saved targets are unavailable.', 6000, 'warning');
-    return null;
-  }
-
-  const root = deserializeWorkspaceSplitNode(snapshot.root, openedByIndex);
-  if (!root) {
-    return null;
-  }
-
-  const terminalIds = collectSplitTerminalIds(root, [])
-    .filter((terminalId) => state.terminals.has(terminalId));
-
-  if (!terminalIds.length) {
-    return null;
-  }
-
-  const oldGroupIds = new Set(
-    terminalIds
-      .map((terminalId) => state.terminals.get(terminalId)?.groupId)
-      .filter(Boolean)
-  );
-
-  oldGroupIds.forEach((groupId) => {
-    const group = getTerminalGroup(groupId);
-    group?.container?.remove();
-    state.terminalGroups.delete(groupId);
-  });
-
-  const requestedActiveId = openedByIndex.get(Number(snapshot.activeSessionIndex));
-  const group = {
-    id: randomId('tab'),
-    root,
-    activeTerminalId: terminalIds.includes(requestedActiveId) ? requestedActiveId : terminalIds[0],
-    title: duplicate && normalizeTerminalTabTitle(snapshot.title)
-      ? normalizeTerminalTabTitle(`${snapshot.title} copy`)
-      : normalizeTerminalTabTitle(snapshot.title),
-    color: normalizeTerminalTabColor(snapshot.color),
-    pinned: duplicate ? false : snapshot.pinned === true,
-    container: null
-  };
-
-  terminalIds.forEach((terminalId) => {
-    const session = state.terminals.get(terminalId);
-    if (session) {
-      session.groupId = group.id;
-    }
-  });
-
-  state.terminalGroups.set(group.id, group);
-  state.activeTerminalGroupId = group.id;
-  state.activeTerminalId = group.activeTerminalId;
-
-  renderTerminalGroupLayout(group);
-  syncTerminalGroupVisibility();
-  renderTerminalTabs();
-  updateCurrentTabFooter();
-
-  const activeSession = state.terminals.get(group.activeTerminalId);
-  if (activeSession) {
-    setTerminalHeaderTitle(activeSession.server?.name || 'Terminal');
-    setTerminalStatus(activeSession.status || 'connected');
-    updateTerminalLocationHeader(activeSession);
-  }
-
-  requestAnimationFrame(() => {
-    scheduleActiveTerminalGroupFit();
-    focusTerminal(activeSession);
-  });
-
-  appendActivityFeedEvent(
-    `${duplicate ? 'Duplicated' : 'Reopened'} terminal tab: ${getTerminalGroupDisplayTitle(group)}.`,
-    'action',
-    { dedupeMs: 900 }
-  );
-  showToast(`${duplicate ? 'Duplicated' : 'Reopened'} ${getTerminalGroupDisplayTitle(group)}.`, 3500, 'success');
-  return group;
-}
-
-async function duplicateTerminalGroup(groupId = state.activeTerminalGroupId) {
-  const group = getTerminalGroup(groupId);
-  const snapshot = captureTerminalGroupSnapshot(group);
-
-  if (!snapshot) {
-    showToast('This tab cannot be duplicated because its connection/profile is no longer saved.', 5500, 'warning');
-    return null;
-  }
-
-  return restoreTerminalGroupSnapshot(snapshot, { duplicate: true });
-}
-
-async function reopenLastClosedTerminalTab() {
-  const snapshot = state.closedTerminalTabs?.shift();
-
-  if (!snapshot) {
-    showToast('No recently closed terminal tab.', 3200, 'info');
-    return null;
-  }
-
-  const restored = await restoreTerminalGroupSnapshot(snapshot);
-
-  if (!restored) {
-    state.closedTerminalTabs.unshift(snapshot);
-  }
-
-  return restored;
-}
-
-
-let activeWorkspaceTabStatePersistTimer = null;
-let activeWorkspaceTabStatePersistInFlight = false;
-let activeWorkspaceTabStatePersistQueued = false;
-
-function queueActiveWorkspaceTabStatePersist() {
-  // Pinned tabs have their own safe restart snapshot and must persist even when
-  // the user is not working inside a saved Workspace.
-  queuePinnedTerminalTabsPersist();
-
-  const workspaceId = String(state.activeWorkspaceId || '');
-
-  if (!workspaceId || state.workspaceRestoreInFlight || !getWorkspaceById(workspaceId)) {
-    return;
-  }
-
-  activeWorkspaceTabStatePersistQueued = true;
-
-  if (activeWorkspaceTabStatePersistTimer) {
-    clearTimeout(activeWorkspaceTabStatePersistTimer);
-  }
-
-  activeWorkspaceTabStatePersistTimer = setTimeout(() => {
-    activeWorkspaceTabStatePersistTimer = null;
-    persistActiveWorkspaceTabState().catch((error) => {
-      appendActivityFeedEvent(
-        `Active workspace tab state could not be saved: ${error.message}`,
-        'warning',
-        { dedupeMs: 1600 }
-      );
-    });
-  }, 250);
-}
-
-async function persistActiveWorkspaceTabState() {
-  if (activeWorkspaceTabStatePersistInFlight) {
-    activeWorkspaceTabStatePersistQueued = true;
-    return;
-  }
-
-  if (!activeWorkspaceTabStatePersistQueued || state.workspaceRestoreInFlight) {
-    return;
-  }
-
-  const workspaceId = String(state.activeWorkspaceId || '');
-  const workspace = getWorkspaceById(workspaceId);
-
-  if (!workspace) {
-    activeWorkspaceTabStatePersistQueued = false;
-    return;
-  }
-
-  activeWorkspaceTabStatePersistQueued = false;
-  activeWorkspaceTabStatePersistInFlight = true;
-
-  try {
-    const snapshot = await captureWorkspaceSnapshot({
-      id: workspace.id,
-      name: workspace.name,
-      includeToolbar: workspace.includeToolbar !== false,
-      restoreWindowState: workspace.restoreWindowState !== false,
-      createdAt: workspace.createdAt || ''
-    });
-
-    if (String(state.activeWorkspaceId || '') !== workspace.id) {
-      return;
-    }
-
-    const latestWorkspace = getWorkspaceById(workspace.id);
-
-    if (!latestWorkspace) {
-      return;
-    }
-
-    // sessions and splitGroups must be updated together because split descriptors
-    // reference indexes in the captured sessions array. Toolbar/window preferences
-    // remain exactly as the user saved them.
-    const updated = {
-      ...cloneWorkspaceData(latestWorkspace),
-      sessions: snapshot.sessions,
-      activeSessionIndex: snapshot.activeSessionIndex,
-      splitGroups: snapshot.splitGroups,
-      updatedAt: snapshot.updatedAt
-    };
-
-    await persistWorkspaceRecord(updated, {
-      startup: state.settings?.startupWorkspaceId === workspace.id
-    });
-  } finally {
-    activeWorkspaceTabStatePersistInFlight = false;
-
-    if (activeWorkspaceTabStatePersistQueued) {
-      queueActiveWorkspaceTabStatePersist();
-    }
-  }
-}
-
-function reorderPinnedTerminalGroups() {
-  const entries = Array.from(state.terminalGroups.entries());
-  const pinned = entries.filter(([, group]) => group?.pinned === true);
-  const normal = entries.filter(([, group]) => group?.pinned !== true);
-  state.terminalGroups = new Map([...pinned, ...normal]);
-}
-
-function setTerminalGroupPinned(groupId, pinned) {
-  const group = getTerminalGroup(groupId);
-
-  if (!group) {
-    return false;
-  }
-
-  group.pinned = pinned === true;
-  reorderPinnedTerminalGroups();
-  renderTerminalTabs();
-  updateCurrentTabFooter();
-  queuePinnedTerminalTabsPersist({ immediate: true });
-  queueActiveWorkspaceTabStatePersist();
-
-  appendActivityFeedEvent(
-    `${group.pinned ? 'Pinned' : 'Unpinned'} terminal tab: ${getTerminalGroupDisplayTitle(group)}.`,
-    'action',
-    { dedupeMs: 800 }
-  );
-  showToast(`${group.pinned ? 'Pinned' : 'Unpinned'} ${getTerminalGroupDisplayTitle(group)}.`, 3000, 'success');
-  return true;
-}
-
-function setTerminalGroupColor(groupId, color) {
-  const group = getTerminalGroup(groupId);
-
-  if (!group) {
-    return false;
-  }
-
-  group.color = normalizeTerminalTabColor(color);
-  renderTerminalTabs();
-  queueActiveWorkspaceTabStatePersist();
-  return true;
-}
-
-function setTerminalGroupTitle(groupId, title) {
-  const group = getTerminalGroup(groupId);
-
-  if (!group) {
-    return false;
-  }
-
-  group.title = normalizeTerminalTabTitle(title);
-  renderTerminalTabs();
-  updateCurrentTabFooter();
-  queueActiveWorkspaceTabStatePersist();
-  appendActivityFeedEvent(`Renamed terminal tab: ${getTerminalGroupDisplayTitle(group)}.`, 'action', { dedupeMs: 800 });
-  return true;
-}
-
-function openTerminalTabRenameModal(groupId) {
-  const group = getTerminalGroup(groupId);
-  const modal = $('#terminal-tab-rename-modal');
-  const input = $('#terminal-tab-rename-input');
-
-  if (!group || !modal || !input) {
-    return;
-  }
-
-  closeTerminalTabContextMenu();
-  state.editingTerminalTabGroupId = group.id;
-  input.value = normalizeTerminalTabTitle(group.title) || getTerminalGroupDisplayTitle(group);
-  modal.classList.remove('hidden');
-  input.focus();
-  input.select();
-}
-
-function closeTerminalTabRenameModal(save = false) {
-  const modal = $('#terminal-tab-rename-modal');
-  const input = $('#terminal-tab-rename-input');
-  const groupId = state.editingTerminalTabGroupId;
-
-  if (save && groupId) {
-    const nextTitle = normalizeTerminalTabTitle(input?.value || '');
-    setTerminalGroupTitle(groupId, nextTitle);
-  }
-
-  state.editingTerminalTabGroupId = null;
-  modal?.classList.add('hidden');
-
-  const group = getTerminalGroup(groupId);
-  const terminalId = group?.activeTerminalId || getFirstTerminalIdInGroup(group);
-  if (terminalId) {
-    requestAnimationFrame(() => focusTerminal(state.terminals.get(terminalId)));
-  }
-}
-
-async function closeOtherTerminalGroups(groupId) {
-  const keep = getTerminalGroup(groupId);
-  if (!keep) return;
-
-  const groups = Array.from(state.terminalGroups.values());
-  let skippedPinned = 0;
-
-  for (const group of groups) {
-    if (group.id === keep.id) continue;
-    if (group.pinned) {
-      skippedPinned += 1;
-      continue;
-    }
-    await closeTerminalGroup(group.id);
-  }
-
-  if (skippedPinned) {
-    showToast(`${skippedPinned} pinned tab${skippedPinned === 1 ? ' was' : 's were'} kept open.`, 4000, 'info');
-  }
-}
-
-async function closeTerminalGroupsToRight(groupId) {
-  const groups = Array.from(state.terminalGroups.values());
-  const index = groups.findIndex((group) => group.id === groupId);
-
-  if (index < 0) return;
-
-  let skippedPinned = 0;
-  for (const group of groups.slice(index + 1)) {
-    if (group.pinned) {
-      skippedPinned += 1;
-      continue;
-    }
-    await closeTerminalGroup(group.id);
-  }
-
-  if (skippedPinned) {
-    showToast(`${skippedPinned} pinned tab${skippedPinned === 1 ? ' was' : 's were'} kept open.`, 4000, 'info');
-  }
-}
-
-let terminalTabContextMenu = null;
-
-function closeTerminalTabContextMenu() {
-  if (terminalTabContextMenu) {
-    terminalTabContextMenu.remove();
-    terminalTabContextMenu = null;
-  }
-}
-
-function terminalTabContextMenuButton(label, action, { disabled = false, danger = false } = {}) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `terminal-tab-context-item${danger ? ' danger' : ''}`;
-  button.textContent = label;
-  button.disabled = disabled;
-  button.addEventListener('click', () => {
-    closeTerminalTabContextMenu();
-    Promise.resolve(action?.()).catch((error) => {
-      showToast(`Tab action failed: ${error.message}`, 6000, 'error');
-    });
-  });
-  return button;
-}
-
-function showTerminalTabContextMenu(group, clientX, clientY) {
-  if (!group) {
-    return;
-  }
-
-  closeTerminalTabContextMenu();
-  closeTerminalTabPicker();
-  closeTerminalSplitPicker();
-
-  const menu = document.createElement('div');
-  menu.className = 'terminal-tab-context-menu';
-  menu.setAttribute('role', 'menu');
-
-  const heading = document.createElement('div');
-  heading.className = 'terminal-tab-context-heading';
-  heading.textContent = getTerminalGroupDisplayTitle(group);
-
-  const duplicateDisabled = !captureTerminalGroupSnapshot(group);
-  const groups = Array.from(state.terminalGroups.values());
-  const groupIndex = groups.findIndex((candidate) => candidate.id === group.id);
-  const hasClosableOther = groups.some((candidate) => candidate.id !== group.id && !candidate.pinned);
-  const hasClosableRight = groups.slice(groupIndex + 1).some((candidate) => !candidate.pinned);
-
-  menu.append(
-    heading,
-    terminalTabContextMenuButton('Rename Tab', () => openTerminalTabRenameModal(group.id)),
-    terminalTabContextMenuButton(group.pinned ? 'Unpin Tab' : 'Pin Tab', () => setTerminalGroupPinned(group.id, !group.pinned)),
-    terminalTabContextMenuButton('Duplicate Tab', () => duplicateTerminalGroup(group.id), { disabled: duplicateDisabled })
-  );
-
-  const divider1 = document.createElement('div');
-  divider1.className = 'terminal-tab-context-divider';
-  menu.appendChild(divider1);
-
-  const colorRow = document.createElement('div');
-  colorRow.className = 'terminal-tab-context-color-row';
-
-  const colorLabel = document.createElement('span');
-  colorLabel.textContent = 'Tab Color';
-
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.value = normalizeTerminalTabColor(group.color) || '#4f8fd8';
-  colorInput.title = 'Choose tab color';
-  colorInput.setAttribute('aria-label', 'Choose tab color');
-  colorInput.addEventListener('input', () => setTerminalGroupColor(group.id, colorInput.value));
-
-  const clearColor = document.createElement('button');
-  clearColor.type = 'button';
-  clearColor.className = 'terminal-tab-context-clear-color';
-  clearColor.textContent = 'Reset';
-  clearColor.addEventListener('click', () => {
-    setTerminalGroupColor(group.id, '');
-    closeTerminalTabContextMenu();
-  });
-
-  colorRow.append(colorLabel, colorInput, clearColor);
-  menu.appendChild(colorRow);
-
-  const divider2 = document.createElement('div');
-  divider2.className = 'terminal-tab-context-divider';
-  menu.append(
-    divider2,
-    terminalTabContextMenuButton('Reopen Last Closed Tab', () => reopenLastClosedTerminalTab(), {
-      disabled: !state.closedTerminalTabs?.length
-    }),
-    terminalTabContextMenuButton('Close Other Tabs', () => closeOtherTerminalGroups(group.id), {
-      disabled: !hasClosableOther
-    }),
-    terminalTabContextMenuButton('Close Tabs to the Right', () => closeTerminalGroupsToRight(group.id), {
-      disabled: !hasClosableRight
-    }),
-    terminalTabContextMenuButton(group.pinned ? 'Pinned Tab — Unpin to Close' : 'Close Tab', () => closeTerminalGroup(group.id), {
-      disabled: group.pinned === true,
-      danger: group.pinned !== true
-    })
-  );
-
-  document.body.appendChild(menu);
-  terminalTabContextMenu = menu;
-
-  const rect = menu.getBoundingClientRect();
-  const left = Math.max(8, Math.min(Number(clientX) || 8, window.innerWidth - rect.width - 8));
-  const top = Math.max(8, Math.min(Number(clientY) || 8, window.innerHeight - rect.height - 8));
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-
-  requestAnimationFrame(() => menu.querySelector('button:not(:disabled)')?.focus());
-}
-
-async function closeTerminalGroup(groupId, { force = false, remember = true } = {}) {
-  const group = getTerminalGroup(groupId);
-
-  if (!group) {
-    return false;
-  }
-
-  if (group.pinned && !force) {
-    showToast('This tab is pinned. Unpin it before closing.', 3800, 'info');
-    return false;
-  }
-
-  if (remember) {
-    rememberClosedTerminalGroup(group);
-  }
-
-  const terminalIds = splitGroupTerminalIds(group);
-
-  for (const terminalId of terminalIds) {
-    if (state.terminals.has(terminalId)) {
-      await closeTerminalSession(terminalId);
-    }
-  }
-
-  return true;
-}
-
-function serializeWorkspaceSplitNode(node, sessionIndexByTerminalId) {
-  if (!node) {
-    return null;
-  }
-
-  if (node.type === 'leaf') {
-    const sessionIndex = sessionIndexByTerminalId.get(node.terminalId);
-    return Number.isInteger(sessionIndex)
-      ? { type: 'leaf', sessionIndex }
-      : null;
-  }
-
-  const first = serializeWorkspaceSplitNode(node.first, sessionIndexByTerminalId);
-  const second = serializeWorkspaceSplitNode(node.second, sessionIndexByTerminalId);
-
-  if (!first) return second;
-  if (!second) return first;
-
-  return {
-    type: 'split',
-    direction: node.direction === 'column' ? 'column' : 'row',
-    ratio: Math.round(Math.min(0.85, Math.max(0.15, Number(node.ratio) || 0.5)) * 1000) / 1000,
-    first,
-    second
-  };
-}
-
-function deserializeWorkspaceSplitNode(node, terminalIdBySessionIndex) {
-  if (!node) {
-    return null;
-  }
-
-  if (node.type === 'leaf') {
-    const terminalId = terminalIdBySessionIndex.get(Number(node.sessionIndex));
-    return terminalId ? createSplitLeaf(terminalId) : null;
-  }
-
-  const first = deserializeWorkspaceSplitNode(node.first, terminalIdBySessionIndex);
-  const second = deserializeWorkspaceSplitNode(node.second, terminalIdBySessionIndex);
-
-  if (!first) return second;
-  if (!second) return first;
-
-  return createSplitNode(node.direction, first, second, node.ratio);
-}
-
-function restoreWorkspaceSplitLayout(workspace, terminalIdBySessionIndex) {
-  const descriptors = Array.isArray(workspace?.splitGroups) ? workspace.splitGroups : [];
-
-  if (!descriptors.length || !terminalIdBySessionIndex?.size) {
-    return;
-  }
-
-  const existingGroups = Array.from(state.terminalGroups.values());
-  existingGroups.forEach((group) => group.container?.remove());
-  state.terminalGroups.clear();
-  state.activeTerminalGroupId = null;
-
-  const usedTerminalIds = new Set();
-
-  descriptors.forEach((descriptor) => {
-    const root = deserializeWorkspaceSplitNode(descriptor.root, terminalIdBySessionIndex);
-
-    if (!root) {
-      return;
-    }
-
-    const terminalIds = collectSplitTerminalIds(root, [])
-      .filter((terminalId) => state.terminals.has(terminalId) && !usedTerminalIds.has(terminalId));
-
-    if (!terminalIds.length) {
-      return;
-    }
-
-    terminalIds.forEach((terminalId) => usedTerminalIds.add(terminalId));
-
-    const activeTerminalId = terminalIdBySessionIndex.get(Number(descriptor.activeSessionIndex));
-    const group = {
-      id: randomId('tab'),
-      root,
-      activeTerminalId: terminalIds.includes(activeTerminalId) ? activeTerminalId : terminalIds[0],
-      title: normalizeTerminalTabTitle(descriptor.title),
-      color: normalizeTerminalTabColor(descriptor.color),
-      pinned: descriptor.pinned === true,
-      container: null
-    };
-
-    terminalIds.forEach((terminalId) => {
-      const session = state.terminals.get(terminalId);
-      if (session) session.groupId = group.id;
-    });
-
-    state.terminalGroups.set(group.id, group);
-    renderTerminalGroupLayout(group);
-  });
-
-  terminalIdBySessionIndex.forEach((terminalId) => {
-    if (usedTerminalIds.has(terminalId)) {
-      return;
-    }
-
-    const session = state.terminals.get(terminalId);
-    if (session) createStandaloneTerminalGroup(session);
-  });
-}
-
 function getTerminalTabRects() {
   const rects = new Map();
 
   $$('.terminal-tab').forEach((tab) => {
-    if (tab.dataset.groupId) {
-      rects.set(tab.dataset.groupId, tab.getBoundingClientRect());
+    if (tab.dataset.terminalId) {
+      rects.set(tab.dataset.terminalId, tab.getBoundingClientRect());
     }
   });
 
@@ -11132,7 +6978,7 @@ function animateTerminalTabLayout(previousRects) {
 
   requestAnimationFrame(() => {
     $$('.terminal-tab').forEach((tab) => {
-      const previousRect = previousRects.get(tab.dataset.groupId);
+      const previousRect = previousRects.get(tab.dataset.terminalId);
 
       if (!previousRect) {
         return;
@@ -11176,9 +7022,9 @@ function getTerminalTabDropPlacement(tab, eventOrClientX) {
   return clientX > rect.left + (rect.width / 2) ? 'after' : 'before';
 }
 
-function getTerminalTabSlideTarget(draggedGroupId, clientX) {
+function getTerminalTabSlideTarget(draggedTerminalId, clientX) {
   const tabs = $$('.terminal-tab')
-    .filter((tab) => tab.dataset.groupId && tab.dataset.groupId !== draggedGroupId);
+    .filter((tab) => tab.dataset.terminalId && tab.dataset.terminalId !== draggedTerminalId);
 
   if (!tabs.length) {
     return null;
@@ -11189,7 +7035,7 @@ function getTerminalTabSlideTarget(draggedGroupId, clientX) {
 
     if (clientX < rect.left + (rect.width / 2)) {
       return {
-        groupId: tab.dataset.groupId,
+        terminalId: tab.dataset.terminalId,
         placement: 'before',
         tab
       };
@@ -11198,7 +7044,7 @@ function getTerminalTabSlideTarget(draggedGroupId, clientX) {
 
   const lastTab = tabs[tabs.length - 1];
   return {
-    groupId: lastTab.dataset.groupId,
+    terminalId: lastTab.dataset.terminalId,
     placement: 'after',
     tab: lastTab
   };
@@ -11230,8 +7076,8 @@ function setTerminalTabDragState(active) {
   document.body.classList.toggle('terminal-tab-drag-active', Boolean(active));
 }
 
-function beginTerminalTabSlideDrag(tab, group, event) {
-  if (event.button !== 0 || event.target.closest('.terminal-tab-close, .terminal-tab-add-button, .terminal-tab-split-button')) {
+function beginTerminalTabSlideDrag(tab, session, event) {
+  if (event.button !== 0 || event.target.closest('.terminal-tab-close')) {
     return;
   }
 
@@ -11239,9 +7085,9 @@ function beginTerminalTabSlideDrag(tab, group, event) {
   const tabRect = tab.getBoundingClientRect();
   const rowRect = tabs?.getBoundingClientRect();
 
-  state.draggingTerminalId = group.id;
+  state.draggingTerminalId = session.terminalId;
   state.terminalTabDrag = {
-    groupId: group.id,
+    terminalId: session.terminalId,
     pointerId: event.pointerId,
     tab,
     startX: event.clientX,
@@ -11249,7 +7095,7 @@ function beginTerminalTabSlideDrag(tab, group, event) {
     startRect: tabRect,
     rowRect,
     moved: false,
-    targetGroupId: null,
+    targetTerminalId: null,
     placement: 'before'
   };
 
@@ -11277,8 +7123,8 @@ function updateTerminalTabSlideDrag(event) {
   drag.tab.classList.add('dragging', 'sliding');
   drag.tab.style.transform = `translateX(${deltaX}px)`;
 
-  const target = getTerminalTabSlideTarget(drag.groupId, event.clientX);
-  drag.targetGroupId = target?.groupId || null;
+  const target = getTerminalTabSlideTarget(drag.terminalId, event.clientX);
+  drag.targetTerminalId = target?.terminalId || null;
   drag.placement = target?.placement || 'before';
   setTerminalTabSlideMarker(target);
   setTerminalTabDragState(true);
@@ -11294,7 +7140,7 @@ function finishTerminalTabSlideDrag(event, commit = true) {
 
   const tab = drag.tab;
   const moved = Boolean(drag.moved);
-  const targetGroupId = drag.targetGroupId;
+  const targetTerminalId = drag.targetTerminalId;
   const placement = drag.placement;
 
   if (tab) {
@@ -11318,8 +7164,8 @@ function finishTerminalTabSlideDrag(event, commit = true) {
       }, 0);
     }
 
-    if (commit && targetGroupId) {
-      reorderTerminalTab(drag.groupId, targetGroupId, placement);
+    if (commit && targetTerminalId) {
+      reorderTerminalTab(drag.terminalId, targetTerminalId, placement);
     }
 
     event?.preventDefault();
@@ -11327,40 +7173,29 @@ function finishTerminalTabSlideDrag(event, commit = true) {
   }
 
   if (commit) {
-    const group = getTerminalGroup(drag.groupId);
-    const terminalId = group?.activeTerminalId || getFirstTerminalIdInGroup(group);
-    if (terminalId) activateTerminalAndFocus(terminalId);
+    activateTerminalAndFocus(drag.terminalId);
   }
 }
 
-function reorderTerminalTab(draggedGroupId, targetGroupId, placement = 'before') {
-  if (!draggedGroupId || !targetGroupId || draggedGroupId === targetGroupId) {
+function reorderTerminalTab(draggedTerminalId, targetTerminalId, placement = 'before') {
+  if (!draggedTerminalId || !targetTerminalId || draggedTerminalId === targetTerminalId) {
     return false;
   }
 
-  if (!state.terminalGroups.has(draggedGroupId) || !state.terminalGroups.has(targetGroupId)) {
-    return false;
-  }
-
-  const draggedGroup = getTerminalGroup(draggedGroupId);
-  const targetGroup = getTerminalGroup(targetGroupId);
-
-  if (Boolean(draggedGroup?.pinned) !== Boolean(targetGroup?.pinned)) {
-    showToast('Pinned tabs stay together. Unpin the tab before moving it across normal tabs.', 4200, 'info');
-    renderTerminalTabs();
+  if (!state.terminals.has(draggedTerminalId) || !state.terminals.has(targetTerminalId)) {
     return false;
   }
 
   const previousRects = getTerminalTabRects();
-  const entries = Array.from(state.terminalGroups.entries());
-  const draggedEntry = entries.find(([groupId]) => groupId === draggedGroupId);
+  const entries = Array.from(state.terminals.entries());
+  const draggedEntry = entries.find(([terminalId]) => terminalId === draggedTerminalId);
 
   if (!draggedEntry) {
     return false;
   }
 
-  const orderedEntries = entries.filter(([groupId]) => groupId !== draggedGroupId);
-  const targetIndex = orderedEntries.findIndex(([groupId]) => groupId === targetGroupId);
+  const orderedEntries = entries.filter(([terminalId]) => terminalId !== draggedTerminalId);
+  const targetIndex = orderedEntries.findIndex(([terminalId]) => terminalId === targetTerminalId);
 
   if (targetIndex < 0) {
     return false;
@@ -11368,17 +7203,16 @@ function reorderTerminalTab(draggedGroupId, targetGroupId, placement = 'before')
 
   const insertIndex = placement === 'after' ? targetIndex + 1 : targetIndex;
   orderedEntries.splice(insertIndex, 0, draggedEntry);
-  state.terminalGroups = new Map(orderedEntries);
+  state.terminals = new Map(orderedEntries);
+  movePinnedTerminalTabsFirst();
+  persistSavedTerminalSessions();
 
-  const movedGroup = draggedEntry[1];
-  const activeSession = state.terminals.get(movedGroup.activeTerminalId)
-    || state.terminals.get(getFirstTerminalIdInGroup(draggedGroup));
-  appendActivityFeedEvent(`Moved terminal tab: ${activeSession?.server?.name || 'Split tab'}.`, 'action', { dedupeMs: 800 });
+  const draggedSession = draggedEntry[1];
+  appendActivityFeedEvent(`Moved terminal tab: ${draggedSession.server?.name || draggedTerminalId}.`, 'action', { dedupeMs: 800 });
   renderTerminalTabs();
   animateTerminalTabLayout(previousRects);
   updateCurrentTabFooter();
   fitActiveTerminal();
-  queueActiveWorkspaceTabStatePersist();
 
   return true;
 }
@@ -11735,12 +7569,6 @@ function createTerminalTabPickerItem(server) {
   item.className = 'terminal-tab-picker-item';
   item.setAttribute('role', 'menuitem');
   item.dataset.serverId = server.id;
-  item.dataset.searchText = [
-    server.name || '',
-    serverSubtitle(server) || '',
-    server.type === 'local' ? 'local terminal' : 'ssh connection',
-    server.group || ''
-  ].join(' ').toLocaleLowerCase();
 
   const icon = document.createElement('span');
   icon.className = `terminal-tab-picker-icon terminal-tab-icon-${terminalType}`;
@@ -11780,7 +7608,7 @@ function createTerminalTabPickerItem(server) {
   return item;
 }
 
-function showTerminalTabPicker(button) {
+function showTerminalTabPicker(button, { typeFilter = 'all' } = {}) {
   closeTerminalTabPicker();
 
   const menu = document.createElement('div');
@@ -11789,40 +7617,18 @@ function showTerminalTabPicker(button) {
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', 'Open saved terminal');
 
-  const searchWrap = document.createElement('div');
-  searchWrap.className = 'terminal-tab-picker-search';
-
-  const searchIcon = document.createElement('span');
-  searchIcon.className = 'terminal-tab-picker-search-icon';
-  searchIcon.setAttribute('aria-hidden', 'true');
-  searchIcon.textContent = '⌕';
-
-  const searchInput = document.createElement('input');
-  searchInput.type = 'search';
-  searchInput.className = 'terminal-tab-picker-search-input';
-  searchInput.placeholder = 'Search terminals...';
-  searchInput.setAttribute('aria-label', 'Search saved terminals');
-  searchInput.autocomplete = 'off';
-  searchInput.spellcheck = false;
-
-  searchWrap.append(searchIcon, searchInput);
-  menu.appendChild(searchWrap);
-
   const servers = sortConnectionsForDisplay([...(state.settings?.servers || [])]);
+  const visibleServers = servers.filter((server) => typeFilter === 'all' || (typeFilter === 'local' ? server.type === 'local' : server.type !== 'local'));
   const groups = [
     {
       label: 'Local terminals',
-      servers: servers.filter((server) => server.type === 'local')
+      servers: visibleServers.filter((server) => server.type === 'local')
     },
     {
       label: 'SSH connections',
-      servers: servers.filter((server) => server.type !== 'local')
+      servers: visibleServers.filter((server) => server.type !== 'local')
     }
   ].filter((group) => group.servers.length > 0);
-
-  const noMatches = document.createElement('div');
-  noMatches.className = 'terminal-tab-picker-empty terminal-tab-picker-no-matches hidden';
-  noMatches.textContent = 'No matching terminals.';
 
   if (!groups.length) {
     const empty = document.createElement('div');
@@ -11833,7 +7639,6 @@ function showTerminalTabPicker(button) {
     groups.forEach((group) => {
       const section = document.createElement('section');
       section.className = 'terminal-tab-picker-section';
-      section.dataset.searchGroup = group.label.toLocaleLowerCase();
 
       const heading = document.createElement('div');
       heading.className = 'terminal-tab-picker-heading';
@@ -11846,69 +7651,17 @@ function showTerminalTabPicker(button) {
 
       menu.appendChild(section);
     });
-
-    menu.appendChild(noMatches);
   }
 
-  const visibleItems = () => Array.from(
-    menu.querySelectorAll('.terminal-tab-picker-item:not(.hidden)')
-  );
-
-  const applySearch = () => {
-    const query = String(searchInput.value || '').trim().toLocaleLowerCase();
-    let totalVisible = 0;
-
-    menu.querySelectorAll('.terminal-tab-picker-section').forEach((section) => {
-      let sectionVisible = 0;
-      const groupText = String(section.dataset.searchGroup || '');
-
-      section.querySelectorAll('.terminal-tab-picker-item').forEach((item) => {
-        const haystack = `${item.dataset.searchText || ''} ${groupText}`;
-        const matches = !query || haystack.includes(query);
-        item.classList.toggle('hidden', !matches);
-
-        if (matches) {
-          sectionVisible += 1;
-          totalVisible += 1;
-        }
-      });
-
-      section.classList.toggle('hidden', sectionVisible === 0);
-    });
-
-    noMatches.classList.toggle('hidden', totalVisible > 0 || !groups.length);
-  };
-
-  searchInput.addEventListener('input', applySearch);
-
   menu.addEventListener('keydown', (event) => {
+    const items = Array.from(menu.querySelectorAll('.terminal-tab-picker-item'));
+
     if (event.key === 'Escape') {
       event.preventDefault();
       closeTerminalTabPicker({ restoreFocus: true });
-      closeTerminalSplitPicker({ restoreFocus: true });
+      closeTerminalTabContextMenu();
+      closeTerminalTabRenameOverlay();
       return;
-    }
-
-    const items = visibleItems();
-
-    if (document.activeElement === searchInput) {
-      if (event.key === 'Enter' && items.length) {
-        event.preventDefault();
-        items[0].click();
-        return;
-      }
-
-      if (event.key === 'ArrowDown' && items.length) {
-        event.preventDefault();
-        items[0].focus();
-        return;
-      }
-
-      if (event.key === 'ArrowUp' && items.length) {
-        event.preventDefault();
-        items[items.length - 1].focus();
-        return;
-      }
     }
 
     if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
@@ -11939,331 +7692,8 @@ function showTerminalTabPicker(button) {
   positionTerminalTabPicker(button, menu);
 
   requestAnimationFrame(() => {
-    searchInput.focus();
-    searchInput.select();
+    menu.querySelector('.terminal-tab-picker-item')?.focus();
   });
-}
-
-
-let terminalSplitPickerMenu = null;
-let terminalSplitPickerButton = null;
-let terminalSplitPickerDirection = 'row';
-
-function closeTerminalSplitPicker({ restoreFocus = false } = {}) {
-  const menu = terminalSplitPickerMenu;
-  const button = terminalSplitPickerButton;
-
-  terminalSplitPickerMenu = null;
-  terminalSplitPickerButton = null;
-
-  if (menu) {
-    menu.remove();
-  }
-
-  if (button) {
-    button.setAttribute('aria-expanded', 'false');
-    if (restoreFocus && button.isConnected) button.focus();
-  }
-}
-
-function activeSplitTargetDescriptor() {
-  const session = state.terminals.get(state.activeTerminalId);
-
-  if (!session) {
-    return null;
-  }
-
-  const savedServer = state.settings?.servers?.find((server) => server.id === session.server?.id) || null;
-  if (savedServer) {
-    return {
-      kind: 'connection',
-      server: savedServer,
-      label: savedServer.name || session.server?.name || 'Connection'
-    };
-  }
-
-  const explicitProfileId = String(session.server?.profileId || '').trim();
-  const parsedProfileId = String(session.server?.id || '').startsWith('terminal-profile:')
-    ? String(session.server.id).slice('terminal-profile:'.length)
-    : '';
-  const profile = getTerminalProfileById(explicitProfileId || parsedProfileId);
-
-  return profile
-    ? { kind: 'profile', profile, label: profile.name || session.server?.name || 'Terminal Profile' }
-    : null;
-}
-
-async function openSplitTarget(target, direction = terminalSplitPickerDirection) {
-  const baseTerminalId = state.activeTerminalId;
-  const baseSession = state.terminals.get(baseTerminalId);
-  const baseGroup = getTerminalGroupForSession(baseSession);
-
-  if (!baseSession || !baseGroup) {
-    showToast('Open a terminal first before creating a split.', 4000, 'warning');
-    return null;
-  }
-
-  if (splitGroupTerminalIds(baseGroup).length >= 4) {
-    showToast('A split tab can contain up to 4 terminal panes.', 4500, 'warning');
-    return null;
-  }
-
-  closeTerminalSplitPicker();
-  let session = null;
-
-  try {
-    if (target?.kind === 'profile' && target.profile?.id) {
-      session = await launchTerminalProfile(target.profile.id, {
-        workingDirectory: target.workingDirectory || ''
-      });
-    } else if (target?.kind === 'connection' && target.server?.id) {
-      selectServer(target.server.id);
-      session = await connectSelectedServer({
-        workingDirectory: target.workingDirectory || ''
-      });
-    } else {
-      showToast('The selected split target is no longer available.', 4500, 'warning');
-      return null;
-    }
-  } catch (error) {
-    showToast(`Split terminal failed: ${error.message}`, 7000, 'error');
-    return null;
-  }
-
-  if (!session) {
-    activateTerminalAndFocus(baseTerminalId);
-    return null;
-  }
-
-  if (!attachTerminalAsSplit(baseTerminalId, session.terminalId, direction)) {
-    showToast('The new terminal opened, but it could not be attached as a split pane.', 6000, 'warning');
-    return session;
-  }
-
-  return session;
-}
-
-function splitPickerTargetItem(target, subtitle = '') {
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.className = 'terminal-tab-picker-item terminal-split-picker-item';
-
-  const icon = document.createElement('span');
-  icon.className = 'terminal-tab-picker-icon';
-  icon.textContent = target.kind === 'profile'
-    ? commandPaletteText(target.profile?.icon || '>_', 3)
-    : (target.server?.type === 'remote' ? 'SSH' : 'LOC');
-
-  const copy = document.createElement('span');
-  copy.className = 'terminal-tab-picker-copy';
-
-  const name = document.createElement('strong');
-  name.className = 'terminal-tab-picker-name';
-  name.textContent = target.label || target.profile?.name || target.server?.name || 'Terminal';
-
-  const detail = document.createElement('small');
-  detail.className = 'terminal-tab-picker-subtitle';
-  detail.textContent = subtitle;
-  detail.title = subtitle;
-
-  copy.append(name, detail);
-  item.append(icon, copy);
-
-  item.addEventListener('click', () => {
-    openSplitTarget(target).catch((error) => {
-      showToast(`Split terminal failed: ${error.message}`, 7000, 'error');
-    });
-  });
-
-  return item;
-}
-
-function addSplitPickerSection(menu, label, targets, subtitleBuilder) {
-  if (!targets.length) {
-    return;
-  }
-
-  const section = document.createElement('section');
-  section.className = 'terminal-tab-picker-section';
-
-  const heading = document.createElement('div');
-  heading.className = 'terminal-tab-picker-heading';
-  heading.textContent = label;
-  section.appendChild(heading);
-
-  targets.forEach((target) => {
-    section.appendChild(splitPickerTargetItem(target, subtitleBuilder(target)));
-  });
-
-  menu.appendChild(section);
-}
-
-function showTerminalSplitPicker(button, preferredDirection = 'row') {
-  const activeSession = state.terminals.get(state.activeTerminalId);
-  const activeGroup = getTerminalGroupForSession(activeSession);
-
-  if (!button || !activeSession || !activeGroup) {
-    showToast('Open a terminal first before creating a split.', 3500, 'warning');
-    return;
-  }
-
-  if (splitGroupTerminalIds(activeGroup).length >= 4) {
-    showToast('This tab already has the maximum of 4 terminal panes.', 4500, 'warning');
-    return;
-  }
-
-  closeTerminalSplitPicker();
-  closeTerminalTabPicker();
-  terminalSplitPickerDirection = preferredDirection === 'column' ? 'column' : 'row';
-
-  const menu = document.createElement('div');
-  menu.id = 'terminal-split-picker-menu';
-  menu.className = 'terminal-tab-picker-menu terminal-split-picker-menu';
-  menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'Split terminal');
-
-  const heading = document.createElement('div');
-  heading.className = 'terminal-tab-picker-heading terminal-split-picker-title';
-  heading.textContent = `Split "${activeSession.server?.name || 'Terminal'}"`;
-
-  const directionRow = document.createElement('div');
-  directionRow.className = 'terminal-split-direction-row';
-
-  const right = document.createElement('button');
-  right.type = 'button';
-  right.className = 'terminal-split-direction-button';
-  right.textContent = 'Split Right';
-  right.title = 'Place the new terminal to the right';
-
-  const down = document.createElement('button');
-  down.type = 'button';
-  down.className = 'terminal-split-direction-button';
-  down.textContent = 'Split Down';
-  down.title = 'Place the new terminal below';
-
-  const syncDirectionButtons = () => {
-    right.classList.toggle('active', terminalSplitPickerDirection === 'row');
-    down.classList.toggle('active', terminalSplitPickerDirection === 'column');
-    right.setAttribute('aria-pressed', terminalSplitPickerDirection === 'row' ? 'true' : 'false');
-    down.setAttribute('aria-pressed', terminalSplitPickerDirection === 'column' ? 'true' : 'false');
-  };
-
-  right.addEventListener('click', () => {
-    terminalSplitPickerDirection = 'row';
-    syncDirectionButtons();
-  });
-  down.addEventListener('click', () => {
-    terminalSplitPickerDirection = 'column';
-    syncDirectionButtons();
-  });
-  syncDirectionButtons();
-  directionRow.append(right, down);
-  menu.append(heading, directionRow);
-
-  const activeTarget = activeSplitTargetDescriptor();
-  if (activeTarget) {
-    const duplicateSection = document.createElement('section');
-    duplicateSection.className = 'terminal-tab-picker-section';
-
-    const duplicateHeading = document.createElement('div');
-    duplicateHeading.className = 'terminal-tab-picker-heading';
-    duplicateHeading.textContent = 'Active terminal';
-
-    const duplicateTarget = {
-      ...activeTarget,
-      label: `Duplicate ${activeTarget.label || 'Active Terminal'}`,
-      workingDirectory: normalizeTerminalLocation(activeSession.currentLocation || '')
-    };
-
-    duplicateSection.append(
-      duplicateHeading,
-      splitPickerTargetItem(duplicateTarget, 'Open an independent session using the active terminal configuration.')
-    );
-    menu.appendChild(duplicateSection);
-  }
-
-  const profiles = getTerminalProfiles().map((profile) => ({
-    kind: 'profile',
-    profile,
-    label: profile.name || 'Terminal Profile'
-  }));
-  addSplitPickerSection(
-    menu,
-    'Terminal Profiles',
-    profiles,
-    (target) => commandPaletteText([
-      terminalProfileKindLabel(target.profile.kind),
-      target.profile.workingDirectory || ''
-    ].filter(Boolean).join(' · '))
-  );
-
-  const servers = sortConnectionsForDisplay([...(state.settings?.servers || [])]);
-  const localTargets = servers
-    .filter((server) => server.type === 'local')
-    .map((server) => ({ kind: 'connection', server, label: server.name || 'Local Terminal' }));
-  const sshTargets = servers
-    .filter((server) => server.type !== 'local')
-    .map((server) => ({ kind: 'connection', server, label: server.name || 'SSH Connection' }));
-
-  addSplitPickerSection(menu, 'Local Connections', localTargets, (target) => commandPaletteText(serverSubtitle(target.server)));
-  addSplitPickerSection(menu, 'SSH Connections', sshTargets, (target) => commandPaletteText(serverSubtitle(target.server)));
-
-  if (splitGroupTerminalIds(activeGroup).length > 1) {
-    const divider = document.createElement('div');
-    divider.className = 'terminal-profile-quick-divider';
-
-    const paneActions = document.createElement('section');
-    paneActions.className = 'terminal-tab-picker-section terminal-split-pane-actions';
-
-    const focusNext = document.createElement('button');
-    focusNext.type = 'button';
-    focusNext.className = 'terminal-split-pane-action';
-    focusNext.textContent = 'Focus Next Pane';
-    focusNext.addEventListener('click', () => {
-      closeTerminalSplitPicker();
-      focusNextSplitPane();
-    });
-
-    const swap = document.createElement('button');
-    swap.type = 'button';
-    swap.className = 'terminal-split-pane-action';
-    swap.textContent = 'Swap With Next Pane';
-    swap.addEventListener('click', () => {
-      closeTerminalSplitPicker();
-      swapActiveSplitPaneWithNext();
-    });
-
-    const closePane = document.createElement('button');
-    closePane.type = 'button';
-    closePane.className = 'terminal-split-pane-action terminal-split-pane-action-danger';
-    closePane.textContent = 'Close Active Pane';
-    closePane.addEventListener('click', () => {
-      const terminalId = state.activeTerminalId;
-      closeTerminalSplitPicker();
-      if (terminalId) closeTerminalSession(terminalId);
-    });
-
-    paneActions.append(focusNext, swap, closePane);
-    menu.append(divider, paneActions);
-  }
-
-  terminalSplitPickerMenu = menu;
-  terminalSplitPickerButton = button;
-  button.setAttribute('aria-expanded', 'true');
-  document.body.appendChild(menu);
-
-  const rect = button.getBoundingClientRect();
-  const menuRect = menu.getBoundingClientRect();
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuRect.width - 8));
-  let top = rect.bottom + 6;
-
-  if (top + menuRect.height > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - menuRect.height - 6);
-  }
-
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
-  menu.querySelector('button')?.focus();
 }
 
 function appendTerminalTabActions(tabs) {
@@ -12287,7 +7717,6 @@ function appendTerminalTabActions(tabs) {
 
   addButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    closeTerminalSplitPicker();
 
     if (terminalTabPickerMenu) {
       closeTerminalTabPicker({ restoreFocus: true });
@@ -12297,97 +7726,482 @@ function appendTerminalTabActions(tabs) {
     showTerminalTabPicker(addButton);
   });
 
-  const splitButton = document.createElement('button');
-  splitButton.id = 'terminal-tab-split-button';
-  splitButton.className = 'terminal-tab-split-button';
-  splitButton.type = 'button';
-  splitButton.title = 'Split the active terminal pane';
-  splitButton.setAttribute('aria-label', 'Split the active terminal pane');
-  splitButton.setAttribute('aria-haspopup', 'menu');
-  splitButton.setAttribute('aria-expanded', 'false');
-  splitButton.textContent = '▦';
+  actions.appendChild(separator);
+  actions.appendChild(addButton);
+  tabs.appendChild(actions);
+}
 
-  const activeGroup = getTerminalGroup(state.activeTerminalGroupId);
-  const paneCount = splitGroupTerminalIds(activeGroup).length;
-  splitButton.disabled = !state.activeTerminalId || paneCount >= 4;
+// Persist the Sessions sidebar (Pinned and Sessions List), including one-level
+// submenus and ordering. Only saved connection IDs and visual metadata are
+// stored; never save shell input/output, credentials, tokens, or PTY state.
+// An older pinned-only manifest is read once if no v7 manifest exists.
+const PINNED_TERMINAL_TABS_STORAGE_KEY = 'advanceTerminal.v5.pinnedTerminalTabs';
+const SAVED_TERMINAL_SESSIONS_STORAGE_KEY = 'advanceTerminal.v7.savedTerminalSessions';
+const MAX_SAVED_TERMINAL_SESSIONS = 256;
+const MAX_RECENTLY_CLOSED_TERMINAL_TABS = 12;
+let terminalTabContextMenu = null;
+let terminalTabRenameOverlay = null;
 
-  if (paneCount >= 4) {
-    splitButton.title = 'Maximum 4 terminal panes in a split tab';
+function normalizeTerminalTabTitle(value) {
+  return String(value || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 60);
+}
+
+function normalizeTerminalTabColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '';
+}
+
+function getTerminalTabTitle(session) {
+  return normalizeTerminalTabTitle(session?.tabCustomTitle) || session?.server?.name || 'Terminal';
+}
+
+function closeTerminalTabContextMenu() {
+  terminalTabContextMenu?.remove();
+  terminalTabContextMenu = null;
+}
+
+// Each sidebar session is stored exactly once, nested under its parent if any.
+// Parents precede their children so parentIndex can be restored without using
+// unstable runtime terminal IDs. Unpinned sessions are no longer thrown away.
+function persistSavedTerminalSessions() {
+  const all = Array.from(state.terminals.values())
+    .filter((session) => session.pendingReconnectReplacement !== true);
+  if (all.length > MAX_SAVED_TERMINAL_SESSIONS) return false;
+  const roots = getV7OrderedSessions(all.filter((session) => !getV7SessionParent(session)));
+  const pinnedRoots = roots.filter((session) => session.tabPinned === true);
+  const otherRoots = roots.filter((session) => session.tabPinned !== true);
+  const snapshots = [];
+  const addSnapshot = (session, parentIndex = -1) => {
+    const quickLocalShell = ['powershell', 'cmd'].includes(session.server?.quickLocalShell)
+      ? session.server.quickLocalShell : '';
+    const serverId = quickLocalShell ? '' : String(session.server?.id || '');
+    if (!quickLocalShell && !serverId) return;
+    snapshots.push({
+      serverId,
+      ...(quickLocalShell ? { quickLocalShell } : {}),
+      title: normalizeTerminalTabTitle(session.tabCustomTitle),
+      color: normalizeTerminalTabColor(session.tabColor),
+      pinned: parentIndex < 0 && session.tabPinned === true,
+      parentIndex,
+      collapsed: parentIndex < 0 && session.v7Collapsed === true
+    });
+  };
+  for (const root of [...pinnedRoots, ...otherRoots]) {
+    const parentIndex = snapshots.length;
+    addSnapshot(root);
+    if (snapshots.length === parentIndex) continue;
+    getV7SessionChildren(root.terminalId).forEach((child) => addSnapshot(child, parentIndex));
+  }
+  try {
+    localStorage.setItem(SAVED_TERMINAL_SESSIONS_STORAGE_KEY, JSON.stringify(snapshots));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function readSavedTerminalSessions() {
+  try {
+    const raw = localStorage.getItem(SAVED_TERMINAL_SESSIONS_STORAGE_KEY);
+    // Existing v5 pinned tabs (and their submenus) migrate into the new list.
+    // A deliberately empty v7 list must NOT resurrect previously closed tabs.
+    const data = raw === null ? localStorage.getItem(PINNED_TERMINAL_TABS_STORAGE_KEY) : raw;
+    if (!data || data.length > 250000) return [];
+    const snapshots = JSON.parse(data);
+    if (!Array.isArray(snapshots)) return [];
+    return snapshots.slice(0, MAX_SAVED_TERMINAL_SESSIONS)
+      .filter((item) => item && typeof item === 'object'
+        && (typeof item.serverId === 'string' || ['powershell', 'cmd'].includes(item.quickLocalShell)))
+      .map((item) => ({
+        serverId: typeof item.serverId === 'string' ? item.serverId.slice(0, 150) : '',
+        quickLocalShell: ['powershell', 'cmd'].includes(item.quickLocalShell) ? item.quickLocalShell : '',
+        title: normalizeTerminalTabTitle(item.title),
+        color: normalizeTerminalTabColor(item.color),
+        pinned: item.pinned === true,
+        parentIndex: Number.isSafeInteger(item.parentIndex) ? item.parentIndex : -1,
+        collapsed: item.collapsed === true
+      }));
+  } catch (_) {
+    return [];
+  }
+}
+
+// Recreate navigation entries, not running processes. SSH connections and
+// PowerShell/CMD start only after the user deliberately chooses Reconnect.
+function restoreSavedTerminalSessions() {
+  const servers = Array.isArray(state.settings?.servers) ? state.settings.servers : [];
+  const snapshots = readSavedTerminalSessions();
+  const restored = [];
+  let firstId = null;
+  for (let i = 0; i < snapshots.length; i += 1) {
+    const snapshot = snapshots[i];
+    const savedServer = servers.find((item) => item.id === snapshot.serverId);
+    const server = snapshot.quickLocalShell
+      ? createV7QuickLocalServer(snapshot.quickLocalShell)
+      : savedServer || (snapshot.serverId ? {
+          id: snapshot.serverId,
+          type: 'remote',
+          name: snapshot.title || 'Missing saved connection',
+          missingSavedConnection: true
+        } : null);
+    if (!server) { restored.push(null); continue; }
+    const terminalId = randomId('restored-tab');
+    const session = createTerminalPane(terminalId, server, { restoredPinned: true, activate: false });
+    session.tabCustomTitle = snapshot.title;
+    session.tabColor = snapshot.color;
+    session.v7SidebarOrder = i;
+    session.v7Collapsed = snapshot.collapsed;
+    const parent = snapshot.parentIndex >= 0 && snapshot.parentIndex < i
+      ? restored[snapshot.parentIndex] : null;
+    if (parent && !parent.v7ParentId) {
+      session.v7ParentId = parent.terminalId;
+      session.tabPinned = false;
+    } else {
+      session.tabPinned = snapshot.pinned;
+    }
+    cleanupTerminalSessionResources(session);
+    session.term.writeln(server.missingSavedConnection
+      ? '\r\n[Saved connection is unavailable. Re-create the connection or remove this entry.]\r\n'
+      : '\r\n[Saved session restored. Right-click the sidebar entry to reconnect.]\r\n');
+    restored.push(session);
+    firstId = firstId || terminalId;
+  }
+  if (firstId) activateTerminal(firstId);
+  // Write the migrated v7 format (including an empty list) once on startup.
+  // The legacy manifest remains untouched for older app versions.
+  persistSavedTerminalSessions();
+  return Boolean(firstId);
+}
+
+function setTerminalTabPinned(terminalId, pinned) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return false;
+  const movingSection = Boolean(session.tabPinned) !== Boolean(pinned) || Boolean(session.v7ParentId);
+  if (pinned && session.v7ParentId) session.v7ParentId = null;
+  session.tabPinned = pinned === true;
+  if (movingSection) session.v7SidebarOrder = getV7NextPeerOrder(null, session.tabPinned, terminalId);
+  const stored = persistSavedTerminalSessions();
+  renderTerminalTabs();
+  showToast(stored
+    ? `${getTerminalTabTitle(session)} ${session.tabPinned ? 'pinned' : 'unpinned'}.`
+    : 'Tab updated for this session, but its pin could not be saved.',
+    3200, stored ? 'success' : 'warning');
+  return true;
+}
+
+function setTerminalTabColor(terminalId, color) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return false;
+  session.tabColor = normalizeTerminalTabColor(color);
+  persistSavedTerminalSessions();
+  renderTerminalTabs();
+  return true;
+}
+
+function closeTerminalTabRenameOverlay() {
+  terminalTabRenameOverlay?.remove();
+  terminalTabRenameOverlay = null;
+}
+
+function openTerminalTabRenameModal(terminalId) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return;
+  closeTerminalTabContextMenu();
+  closeTerminalTabRenameOverlay();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'terminal-tab-rename-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'terminal-tab-rename-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Rename terminal tab');
+  const label = document.createElement('label');
+  label.textContent = 'Rename Tab';
+  const input = document.createElement('input');
+  input.className = 'terminal-tab-rename-input';
+  input.type = 'text';
+  input.maxLength = 60;
+  input.value = getTerminalTabTitle(session);
+  label.appendChild(input);
+  const actions = document.createElement('div');
+  actions.className = 'terminal-tab-rename-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  const finish = (shouldSave) => {
+    if (shouldSave && state.terminals.has(terminalId)) {
+      session.tabCustomTitle = normalizeTerminalTabTitle(input.value);
+      persistSavedTerminalSessions();
+      renderTerminalTabs();
+      updateCurrentTabFooter();
+    }
+    closeTerminalTabRenameOverlay();
+  };
+  cancel.addEventListener('click', () => finish(false));
+  save.addEventListener('click', () => finish(true));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); finish(true); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+  });
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) finish(false);
+  });
+  actions.append(cancel, save);
+  dialog.append(label, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  terminalTabRenameOverlay = overlay;
+  input.focus();
+  input.select();
+}
+
+function rememberClosedTerminalTab(session) {
+  if (!session?.hasConnected || !session.server?.id) return;
+  state.closedTerminalTabs.unshift({
+    serverId: session.server.quickLocalShell ? '' : session.server.id,
+    quickLocalShell: session.server.quickLocalShell || '',
+    title: normalizeTerminalTabTitle(session.tabCustomTitle),
+    color: normalizeTerminalTabColor(session.tabColor)
+  });
+  state.closedTerminalTabs.length = Math.min(state.closedTerminalTabs.length, MAX_RECENTLY_CLOSED_TERMINAL_TABS);
+}
+
+// Always go through the normal connection/authentication path. No secrets or PTYs are cloned.
+// Reconnecting an existing tab is not the same as opening a new tab: preserve
+// the old slot, group, selection, and saved appearance while using the normal
+// SSH authentication path to establish a fresh PTY/SSH engine.
+async function openFreshTerminalTab(source, { replaceSession = null } = {}) {
+  const quickLocalShell = ['powershell', 'cmd'].includes(source?.quickLocalShell) ? source.quickLocalShell : '';
+  const server = quickLocalShell
+    ? createV7QuickLocalServer(quickLocalShell)
+    : state.settings?.servers?.find((item) => item.id === source?.serverId);
+  if (!server) {
+    showToast('Saved connection no longer exists.', 4000, 'warning');
+    return false;
+  }
+  if (state.connectionAttemptInFlight || getConnectingTerminalSession()) {
+    showToast('Wait for the current connection to finish.', 3500, 'warning');
+    return false;
+  }
+  const replacing = replaceSession && state.terminals.get(replaceSession.terminalId) === replaceSession
+    && replaceSession.closed ? replaceSession : null;
+  if (replaceSession && !replacing) return false;
+  const originalOrder = replacing ? Array.from(state.terminals.keys()) : null;
+  const previouslyOpen = new Set(state.terminals.keys());
+  if (!replacing && !quickLocalShell) selectServer(server.id);
+  // Background mode does not activate an extra tab while SSH authenticates.
+  await connectSelectedServer((replacing || quickLocalShell)
+    ? { serverOverride: server, background: Boolean(replacing) } : {});
+  const candidates = Array.from(state.terminals.values()).filter((session) => (
+    !previouslyOpen.has(session.terminalId) && session.server?.id === server.id
+  ));
+  const fresh = candidates.find((session) => session.hasConnected && !session.closed);
+  if (!fresh || (replacing && state.terminals.get(replacing.terminalId) !== replacing)) {
+    // On cancellation/failure, keep the original disconnected tab and slot.
+    // Do not leave a second error tab behind from a background reconnection.
+    if (replacing) candidates.forEach((session) => {
+      if (state.terminals.has(session.terminalId)) {
+        closeTerminalSession(session.terminalId, { force: true, remember: false });
+      }
+    });
+    return false;
   }
 
-  splitButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    closeTerminalTabPicker();
-
-    if (terminalSplitPickerMenu) {
-      closeTerminalSplitPicker({ restoreFocus: true });
-      return;
+  fresh.tabCustomTitle = normalizeTerminalTabTitle(source.title);
+  fresh.tabColor = normalizeTerminalTabColor(source.color);
+  if (replacing) {
+    fresh.tabPinned = replacing.tabPinned === true;
+    fresh.v7ParentId = replacing.v7ParentId || null;
+    fresh.v7Collapsed = replacing.v7Collapsed === true;
+    fresh.v7SidebarOrder = replacing.v7SidebarOrder;
+    const reparentChildren = getV7SessionChildren(replacing.terminalId).map((child) => child.terminalId);
+    // Unsent text in the command composer belongs to the tab, not the PTY.
+    if (v7ComposerDrafts.has(replacing.terminalId)) {
+      v7ComposerDrafts.set(fresh.terminalId, v7ComposerDrafts.get(replacing.terminalId));
     }
+    fresh.pendingReconnectReplacement = false;
+    // Keep the user's current selection. If the old tab was selected,
+    // the replacement becomes selected in the same position.
+    if (state.activeTerminalId === replacing.terminalId) {
+      state.activeTerminalId = fresh.terminalId;
+    }
+    closeTerminalSession(replacing.terminalId, { force: true, remember: false });
+    reparentChildren.forEach((id) => {
+      const child = state.terminals.get(id);
+      if (child) child.v7ParentId = fresh.terminalId;
+    });
+    const orderedIds = originalOrder
+      .map((id) => id === replacing.terminalId ? fresh.terminalId : id)
+      .filter((id) => state.terminals.has(id));
+    const orderedSet = new Set(orderedIds);
+    for (const id of state.terminals.keys()) {
+      if (!orderedSet.has(id)) orderedIds.push(id);
+    }
+    state.terminals = new Map(orderedIds.map((id) => [id, state.terminals.get(id)]));
+  }
+  persistSavedTerminalSessions();
+  renderTerminalTabs();
+  updateCurrentTabFooter();
+  return true;
+}
 
-    showTerminalSplitPicker(splitButton, 'row');
+async function duplicateTerminalTab(terminalId) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return false;
+  return openFreshTerminalTab({
+    serverId: session.server?.id,
+    quickLocalShell: session.server?.quickLocalShell,
+    title: session.tabCustomTitle,
+    color: session.tabColor
   });
+}
 
-  actions.append(separator, addButton, splitButton);
-  tabs.appendChild(actions);
+async function reopenLastClosedTerminalTab() {
+  const snapshot = state.closedTerminalTabs[0];
+  if (!snapshot) return false;
+  const opened = await openFreshTerminalTab(snapshot);
+  if (opened) state.closedTerminalTabs.shift();
+  return opened;
+}
+
+async function reconnectTerminalTab(terminalId) {
+  const session = state.terminals.get(terminalId);
+  if (!session || !session.closed) return false;
+  return openFreshTerminalTab({
+    serverId: session.server?.id,
+    quickLocalShell: session.server?.quickLocalShell,
+    title: session.tabCustomTitle,
+    color: session.tabColor
+  }, { replaceSession: session });
+}
+
+function closeOtherTerminalTabs(terminalId) {
+  if (!state.terminals.has(terminalId)) return 0;
+  const ids = Array.from(state.terminals.values())
+    .filter((session) => session.terminalId !== terminalId)
+    .map((session) => session.terminalId);
+  ids.forEach((id) => closeTerminalSession(id));
+  return ids.length;
+}
+
+function closeTerminalTabsToRight(terminalId) {
+  const entries = Array.from(state.terminals.values());
+  const index = entries.findIndex((session) => session.terminalId === terminalId);
+  if (index < 0) return 0;
+  const ids = entries.slice(index + 1)
+    .map((session) => session.terminalId);
+  ids.forEach((id) => closeTerminalSession(id));
+  return ids.length;
+}
+
+function terminalTabMenuButton(label, action, disabled = false, danger = false) {
+  const button = document.createElement('button');
+  button.className = `terminal-tab-context-item${danger ? ' danger' : ''}`;
+  button.type = 'button';
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener('click', () => {
+    closeTerminalTabContextMenu();
+    Promise.resolve().then(action).catch((error) => {
+      showToast(`Tab action failed: ${error.message}`, 5000, 'error');
+    });
+  });
+  return button;
+}
+
+function showTerminalTabContextMenu(terminalId, clientX, clientY) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return;
+  closeTerminalTabContextMenu();
+  closeTerminalTabPicker();
+  hideSidebarContextMenu();
+
+  const values = Array.from(state.terminals.values());
+  const index = values.findIndex((item) => item.terminalId === terminalId);
+  const menu = document.createElement('div');
+  menu.className = 'terminal-tab-context-menu';
+  menu.setAttribute('role', 'menu');
+  const heading = document.createElement('div');
+  heading.className = 'terminal-tab-context-heading';
+  heading.textContent = getTerminalTabTitle(session);
+  menu.append(
+    heading,
+    terminalTabMenuButton('Rename Tab', () => openTerminalTabRenameModal(terminalId)),
+    terminalTabMenuButton(session.tabPinned ? 'Unpin Tab' : 'Pin Tab', () => setTerminalTabPinned(terminalId, !session.tabPinned)),
+    terminalTabMenuButton('Duplicate Tab', () => duplicateTerminalTab(terminalId)),
+    terminalTabMenuButton('Reconnect', () => reconnectTerminalTab(terminalId), !session.closed),
+    ...(session.v7ParentId ? [terminalTabMenuButton('Move out of submenu', () => detachV7Session(terminalId))] : [])
+  );
+  const divider1 = document.createElement('div');
+  divider1.className = 'terminal-tab-context-divider';
+  menu.appendChild(divider1);
+  const colorRow = document.createElement('div');
+  colorRow.className = 'terminal-tab-context-color-row';
+  const colorLabel = document.createElement('span');
+  colorLabel.textContent = 'Tab Color';
+  const picker = document.createElement('input');
+  picker.type = 'color';
+  picker.value = normalizeTerminalTabColor(session.tabColor) || '#4f8fd8';
+  picker.setAttribute('aria-label', 'Choose tab color');
+  picker.addEventListener('input', () => setTerminalTabColor(terminalId, picker.value));
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.textContent = 'Reset';
+  reset.addEventListener('click', () => { setTerminalTabColor(terminalId, ''); closeTerminalTabContextMenu(); });
+  colorRow.append(colorLabel, picker, reset);
+  menu.appendChild(colorRow);
+  const divider2 = document.createElement('div');
+  divider2.className = 'terminal-tab-context-divider';
+  menu.append(
+    divider2,
+    terminalTabMenuButton('Reopen Last Closed Tab', reopenLastClosedTerminalTab, !state.closedTerminalTabs.length),
+    terminalTabMenuButton('Close Other Tabs', () => closeOtherTerminalTabs(terminalId), !values.some((item) => item.terminalId !== terminalId)),
+    terminalTabMenuButton('Close Tabs to the Right', () => closeTerminalTabsToRight(terminalId), !values.slice(index + 1).length),
+    terminalTabMenuButton('Close Tab', () => closeTerminalSession(terminalId, { force: true }), false, true)
+  );
+  document.body.appendChild(menu);
+  terminalTabContextMenu = menu;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(clientX || 8, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY || 8, window.innerHeight - rect.height - 8))}px`;
+  requestAnimationFrame(() => menu.querySelector('button:not(:disabled)')?.focus());
 }
 
 function renderTerminalTabs() {
   closeTerminalTabPicker();
-  closeTerminalSplitPicker();
 
   const tabs = $('#terminal-tabs');
-  if (!tabs) {
-    return;
-  }
-
   tabs.innerHTML = '';
 
-  const groups = Array.from(state.terminalGroups.values())
-    .filter((group) => splitGroupTerminalIds(group).some((terminalId) => state.terminals.has(terminalId)));
-  tabs.classList.toggle('has-tabs', groups.length > 0);
+  const values = Array.from(state.terminals.values())
+    .filter((session) => session.pendingReconnectReplacement !== true);
+  tabs.classList.toggle('has-tabs', values.length > 0);
 
-  groups.forEach((group) => {
-    const terminalIds = splitGroupTerminalIds(group).filter((terminalId) => state.terminals.has(terminalId));
-    const preferredTerminalId = group.activeTerminalId && terminalIds.includes(group.activeTerminalId)
-      ? group.activeTerminalId
-      : terminalIds[0];
-    const session = state.terminals.get(preferredTerminalId);
-
-    if (!session) {
-      return;
-    }
-
-    group.activeTerminalId = preferredTerminalId;
-    const isActive = group.id === state.activeTerminalGroupId;
+  values.forEach((session) => {
+    const isActive = session.terminalId === state.activeTerminalId;
     const tab = document.createElement('div');
-    tab.className = `terminal-tab ${isActive ? 'active' : ''}`;
-    tab.dataset.groupId = group.id;
-    tab.dataset.terminalId = preferredTerminalId;
+    tab.className = `terminal-tab ${isActive ? 'active' : ''}${session.tabPinned ? ' is-pinned' : ''}`;
+    const tabColor = normalizeTerminalTabColor(session.tabColor);
+    if (tabColor) {
+      tab.style.setProperty('--custom-tab-color', tabColor);
+      tab.classList.add('has-custom-color');
+    }
+    tab.dataset.terminalId = session.terminalId;
     tab.draggable = false;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('tabindex', '0');
     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    tab.classList.toggle('pinned', group.pinned === true);
-
-    const customColor = normalizeTerminalTabColor(group.color);
-    if (customColor) {
-      tab.classList.add('has-custom-color');
-      tab.style.setProperty('--terminal-tab-custom-color', customColor);
-    }
-
-    const paneCount = terminalIds.length;
-    const terminalTypes = terminalIds
-      .map((terminalId) => state.terminals.get(terminalId)?.server?.type)
-      .filter(Boolean);
-    const terminalType = terminalTypes.every((type) => type === 'local') ? 'local' : 'ssh';
-    const paneLabel = paneCount > 1 ? ` · ${paneCount} panes` : '';
-    const displayTitle = getTerminalGroupDisplayTitle(group);
-    const pinLabel = group.pinned ? ' · Pinned' : '';
-    tab.title = `${session.server?.type === 'local' ? 'Local terminal' : 'SSH'}: ${displayTitle}${paneLabel}${pinLabel} - drag left or right to reorder · right-click for tab actions`;
+    tab.title = `${session.server?.type === 'local' ? 'Local terminal' : 'SSH'}: ${getTerminalTabTitle(session)} - right-click for tab actions`;
 
     const inner = document.createElement('div');
     inner.className = 'terminal-tab-inner';
 
+    const terminalType = session.server?.type === 'local' ? 'local' : 'ssh';
     const icon = document.createElement('span');
     icon.className = `terminal-tab-icon terminal-tab-icon-${terminalType}`;
     icon.setAttribute('aria-hidden', 'true');
@@ -12395,23 +8209,20 @@ function renderTerminalTabs() {
 
     const title = document.createElement('span');
     title.className = 'terminal-tab-title';
-    title.textContent = displayTitle;
+    title.textContent = getTerminalTabTitle(session);
 
-    inner.append(icon, title);
+    const workingIndicator = document.createElement('span');
+    workingIndicator.className = 'terminal-tab-work-indicator';
+    workingIndicator.setAttribute('role', 'status');
+    workingIndicator.setAttribute('aria-label', 'Ready');
+    workingIndicator.setAttribute('aria-live', 'off');
+    workingIndicator.setAttribute('aria-hidden', 'true');
 
-    if (paneCount > 1) {
-      const badge = document.createElement('span');
-      badge.className = 'terminal-tab-pane-count';
-      badge.textContent = String(paneCount);
-      badge.title = `${paneCount} terminal panes`;
-      inner.appendChild(badge);
-    }
-
-    if (group.pinned) {
+    if (session.tabPinned) {
       const pin = document.createElement('span');
-      pin.className = 'terminal-tab-pin';
-      pin.textContent = 'PIN';
-      pin.title = 'Pinned tab';
+      pin.className = 'terminal-tab-pin-icon';
+      pin.setAttribute('aria-hidden', 'true');
+      pin.textContent = '📌';
       inner.appendChild(pin);
     }
 
@@ -12419,13 +8230,10 @@ function renderTerminalTabs() {
     closeButton.className = 'terminal-tab-close';
     closeButton.type = 'button';
     closeButton.draggable = false;
-    closeButton.setAttribute('aria-label', `Close ${displayTitle} tab`);
-    closeButton.title = group.pinned
-      ? 'Pinned tab — unpin it before closing'
-      : (paneCount > 1 ? `Close tab and all ${paneCount} panes` : 'Close tab');
+    closeButton.setAttribute('aria-label', `Close ${session.server.name}`);
+    closeButton.title = 'Close tab';
+    closeButton.disabled = false;
     closeButton.textContent = '×';
-    closeButton.disabled = group.pinned === true;
-    closeButton.classList.toggle('hidden', group.pinned === true);
 
     tab.addEventListener('click', (event) => {
       if (tab.dataset.suppressClick === '1') {
@@ -12434,33 +8242,21 @@ function renderTerminalTabs() {
         return;
       }
 
-      const targetTerminalId = group.activeTerminalId || getFirstTerminalIdInGroup(group);
-      if (targetTerminalId) activateTerminalAndFocus(targetTerminalId);
+      activateTerminalAndFocus(session.terminalId);
     });
-
     tab.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        const targetTerminalId = group.activeTerminalId || getFirstTerminalIdInGroup(group);
-        if (targetTerminalId) activateTerminalAndFocus(targetTerminalId);
-      }
-    });
-
-    tab.addEventListener('dblclick', (event) => {
-      if (event.button === 0 && !event.target.closest('.terminal-tab-close')) {
-        event.preventDefault();
-        openTerminalTabRenameModal(group.id);
+        activateTerminalAndFocus(session.terminalId);
       }
     });
 
     tab.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      activateTerminal(group.activeTerminalId || getFirstTerminalIdInGroup(group));
-      showTerminalTabContextMenu(group, event.clientX, event.clientY);
+      showTerminalTabContextMenu(session.terminalId, event.clientX, event.clientY);
     });
-
-    tab.addEventListener('pointerdown', (event) => beginTerminalTabSlideDrag(tab, group, event));
+    tab.addEventListener('pointerdown', (event) => beginTerminalTabSlideDrag(tab, session, event));
     tab.addEventListener('pointermove', updateTerminalTabSlideDrag);
     tab.addEventListener('pointerup', (event) => finishTerminalTabSlideDrag(event, true));
     tab.addEventListener('pointercancel', (event) => finishTerminalTabSlideDrag(event, false));
@@ -12468,83 +8264,150 @@ function renderTerminalTabs() {
 
     closeButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      closeTerminalGroup(group.id);
+      closeTerminalSession(session.terminalId, { force: true });
     });
 
     closeButton.addEventListener('dragstart', (event) => {
       event.preventDefault();
     });
 
+    inner.appendChild(icon);
+    inner.appendChild(title);
+    inner.appendChild(workingIndicator);
     inner.appendChild(closeButton);
     tab.appendChild(inner);
     tabs.appendChild(tab);
+    updateTerminalTabWorkingIndicator(session);
   });
 
-  if (groups.length > 0) {
+  if (values.length > 0) {
     appendTerminalTabActions(tabs);
   }
+  renderV7MinimalSessionList();
 }
 
 
+// Lightweight browser-like tab history. This never sends shell commands or stores
+// server addresses/credentials. Closing a tab invalidates its history entries.
+const terminalTabNavigation = { back: [], forward: [], traversing: false };
+const MAX_TERMINAL_TAB_HISTORY = 64;
+
+function updateTerminalTabNavigationButtons() {
+  terminalTabNavigation.back = terminalTabNavigation.back.filter((id) => state.terminals.has(id));
+  terminalTabNavigation.forward = terminalTabNavigation.forward.filter((id) => state.terminals.has(id));
+  const back = $('#terminal-nav-back');
+  const forward = $('#terminal-nav-forward');
+  const reload = $('#terminal-nav-reload');
+  if (back) back.disabled = !terminalTabNavigation.back.length;
+  if (forward) forward.disabled = !terminalTabNavigation.forward.length;
+  if (reload) {
+    const session = state.terminals.get(state.activeTerminalId);
+    reload.disabled = !session;
+    const reconnect = Boolean(session?.closed);
+    reload.title = reconnect
+      ? 'Reconnect disconnected terminal (may prompt for SSH authentication)'
+      : 'Refresh terminal display without restarting the command';
+    reload.setAttribute('aria-label', reconnect ? 'Reconnect current terminal' : 'Refresh current terminal display');
+  }
+}
+
+function rememberTerminalTabNavigation(previousId, nextId) {
+  if (!terminalTabNavigation.traversing
+      && previousId !== nextId
+      && state.terminals.has(previousId)
+      && state.terminals.has(nextId)) {
+    terminalTabNavigation.back.push(previousId);
+    terminalTabNavigation.back = terminalTabNavigation.back.slice(-MAX_TERMINAL_TAB_HISTORY);
+    terminalTabNavigation.forward = [];
+  }
+  updateTerminalTabNavigationButtons();
+}
+
+function navigateTerminalTab(direction) {
+  const source = direction === 'back' ? terminalTabNavigation.back : terminalTabNavigation.forward;
+  const target = direction === 'back' ? terminalTabNavigation.forward : terminalTabNavigation.back;
+  while (source.length) {
+    const id = source.pop();
+    if (!state.terminals.has(id) || id === state.activeTerminalId) continue;
+    if (state.terminals.has(state.activeTerminalId)) {
+      target.push(state.activeTerminalId);
+      if (target.length > MAX_TERMINAL_TAB_HISTORY) target.shift();
+    }
+    terminalTabNavigation.traversing = true;
+    try {
+      activateTerminalAndFocus(id);
+    } finally {
+      terminalTabNavigation.traversing = false;
+      updateTerminalTabNavigationButtons();
+    }
+    return true;
+  }
+  updateTerminalTabNavigationButtons();
+  return false;
+}
+
+// 'Reload' is intentionally non-destructive for a connected terminal: never
+// terminate a live PowerShell process, SSH session, or currently running job.
+async function reloadActiveTerminalDisplay() {
+  const session = state.terminals.get(state.activeTerminalId);
+  if (!session) return false;
+  if (session.closed) {
+    return reconnectTerminalTab(session.terminalId);
+  }
+  updateTerminalLocationHeader(session);
+  try {
+    if (typeof session.term?.refresh === 'function') {
+      session.term.refresh(0, Math.max(0, (session.term.rows || 1) - 1));
+    }
+  } catch (_) { /* Terminal might be initializing; fitting still works. */ }
+  fitActiveTerminal();
+  return true;
+}
+
 function activateTerminal(terminalId) {
   const previousTerminalId = state.activeTerminalId;
-  const previousGroupId = state.activeTerminalGroupId;
-  const session = state.terminals.get(terminalId);
-
-  if (!session) {
-    return;
-  }
 
   if (previousTerminalId && previousTerminalId !== terminalId && isTerminalSearchOpen()) {
     clearTerminalSearchSelection(state.terminals.get(previousTerminalId));
   }
 
-  let group = getTerminalGroupForSession(session);
-
-  if (!group) {
-    group = createStandaloneTerminalGroup(session);
-  }
-
   state.activeTerminalId = terminalId;
-  state.activeTerminalGroupId = group?.id || null;
+  rememberTerminalTabNavigation(previousTerminalId, terminalId);
 
-  if (group) {
-    group.activeTerminalId = terminalId;
-  }
+  $$('.terminal-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.dataset.terminalId === terminalId);
+  });
 
-  syncTerminalGroupVisibility();
+  const session = state.terminals.get(terminalId);
+  if (session) {
+    setTerminalHeaderTitle(session.server.name);
+    setTerminalStatus(session.status || (session.closed ? 'disconnected' : 'connected'));
+    updateTerminalLocationHeader(session);
 
-  setTerminalHeaderTitle(session.server?.name || 'Terminal');
-  setTerminalStatus(session.status || (session.closed ? 'disconnected' : 'connected'));
-  updateTerminalLocationHeader(session);
-
-  if (previousTerminalId && previousTerminalId !== terminalId) {
-    appendActivityFeedEvent(
-      previousGroupId === state.activeTerminalGroupId
-        ? `Active split pane switched to ${session.server?.name || terminalId}.`
-        : `Active terminal tab switched to ${session.server?.name || terminalId}.`,
-      'action',
-      { dedupeMs: 800 }
-    );
+    if (previousTerminalId && previousTerminalId !== terminalId) {
+      appendActivityFeedEvent(`Active terminal tab switched to ${session.server?.name || terminalId}.`, 'action', { dedupeMs: 800 });
+    }
+  } else {
+    updateTerminalLocationHeader(null);
   }
 
   renderTerminalTabs();
-  renderTerminalToolbarActions();
   updateCurrentTabFooter();
+  syncV7CommandComposer();
   fitActiveTerminal();
 
   requestAnimationFrame(syncTerminalSearchToActiveSession);
 }
 
-function createTerminalPane(terminalId, server) {
+function createTerminalPane(terminalId, server, { restoredPinned = false, activate = true } = {}) {
   $('#terminal-empty').classList.add('hidden');
 
-  $$('.terminal-pane').forEach((existingPane) => {
+  if (activate) $$('.terminal-pane').forEach((existingPane) => {
     existingPane.classList.remove('active');
   });
 
   const pane = document.createElement('div');
-  pane.className = 'terminal-pane active';
+  pane.className = activate ? 'terminal-pane active' : 'terminal-pane';
   pane.dataset.terminalId = terminalId;
   $('#terminal-host').appendChild(pane);
 
@@ -12568,7 +8431,7 @@ function createTerminalPane(terminalId, server) {
   `;
   pane.appendChild(connectOverlay);
 
-  try {
+  if (activate) try {
     fitAddon.fit();
   } catch (_) {
     // Ignore early fit failure while the pane is being mounted.
@@ -12585,11 +8448,18 @@ function createTerminalPane(terminalId, server) {
   });
 
   session.connectOverlay = connectOverlay;
-  installTerminalClipboardShortcuts(session);
   session.cleanSshStartupActive = server?.type === 'remote';
   session.cleanSshStartupStartedAt = session.cleanSshStartupActive ? Date.now() : null;
   session.cleanSshStartupBuffer = '';
   session.sshTypedCommandBuffer = '';
+  if (restoredPinned) {
+    session.restoredPinnedPlaceholder = true;
+    session.closed = true;
+    session.manualClose = true;
+    session.hasConnected = false;
+    session.status = 'disconnected';
+    session.cleanSshStartupActive = false;
+  }
 
   setSessionCurrentLocation(session, getInitialTerminalLocation(server));
 
@@ -12602,12 +8472,15 @@ function createTerminalPane(terminalId, server) {
   pane.addEventListener('focusin', terminalFocusHandler);
 
   const inputDisposable = term.onData((data) => {
+    if (session.closed) return;
     if (handleSshLockedInteractiveInput(session, data)) {
       return;
     }
 
-    recordTerminalInput(session, data);
+    // Forward accepted keystrokes/paste to PTY or SSH before synchronous
+    // reporting work. The remote/local shell remains the sole source of echo.
     window.advanceTerminal.writeTerminal({ terminalId, data });
+    recordTerminalInput(session, data);
   });
 
   session.disposables = [inputDisposable];
@@ -12623,14 +8496,6 @@ function createTerminalPane(terminalId, server) {
     activateTerminalAndFocus(terminalId);
 
     try {
-      if (session.term?.getSelection?.()) {
-        await writeTerminalSelectionToClipboard(session, {
-          focus: false,
-          toastMessage: 'Copied highlighted terminal text.'
-        });
-        return;
-      }
-
       const text = await navigator.clipboard.readText();
 
       if (!text) {
@@ -12644,7 +8509,7 @@ function createTerminalPane(terminalId, server) {
       });
     } catch (error) {
       focusTerminal(session);
-      showToast(`Right-click clipboard action failed: ${error.message}`, 5000, 'error');
+      showToast('Right-click paste failed. Use toolbar Paste.', 'error');
     }
   };
 
@@ -12652,16 +8517,19 @@ function createTerminalPane(terminalId, server) {
   pane.addEventListener('contextmenu', contextMenuHandler);
 
   state.terminals.set(terminalId, session);
-  createStandaloneTerminalGroup(session);
-  recordSessionEvent(session, `Opened terminal tab: ${server.name || terminalId}`, 'system');
-  activateTerminal(terminalId);
+  if (!restoredPinned) {
+    recordSessionEvent(session, `Opened terminal tab: ${server.name || terminalId}`, 'system');
+  }
+  if (activate) activateTerminal(terminalId);
 
   return session;
 }
 
 function getTerminalSize(session) {
-  const cols = Math.max(10, Math.min(500, Number(session?.term?.cols || 120)));
-  const rows = Math.max(4, Math.min(200, Number(session?.term?.rows || 32)));
+  // Match the actual xterm viewport. The old 80x24 floor made the PTY/SSH
+  // believe it had more rows/columns than a narrow or short window could show.
+  const cols = Math.max(2, Math.min(500, Number(session?.term?.cols || 120)));
+  const rows = Math.max(2, Math.min(200, Number(session?.term?.rows || 32)));
 
   return {
     cols: Number.isFinite(cols) ? Math.floor(cols) : 120,
@@ -12685,7 +8553,7 @@ function syncTerminalBackendSize(session) {
 function fitTerminalSessionNow(session, options = {}) {
   const notifyBackend = options.notifyBackend !== false;
 
-  if (!session || session.closed || !isTerminalSessionVisible(session)) {
+  if (!session || !session.pane?.classList.contains('active')) {
     return;
   }
 
@@ -12713,35 +8581,41 @@ function fitTerminalSession(session, options = {}) {
 }
 
 function fitActiveTerminal() {
-  const group = getTerminalGroup(state.activeTerminalGroupId);
-  const terminalIds = splitGroupTerminalIds(group);
-
-  if (!terminalIds.length && state.activeTerminalId) {
-    fitTerminalSession(state.terminals.get(state.activeTerminalId));
-    return;
-  }
-
-  terminalIds.forEach((terminalId) => {
-    fitTerminalSession(state.terminals.get(terminalId));
-  });
+  const session = state.terminals.get(state.activeTerminalId);
+  fitTerminalSession(session);
 }
 
-function scheduleActiveTerminalFit() {
-  scheduleActiveTerminalGroupFit();
-}
-
-function setupTerminalResizeObserver() {
+// Fit xterm after its *container* changes size, including push-flyout and
+// bottom-composer changes that do not always trigger a native window resize.
+// One observer and at most one fit per animation frame; never recreate sessions.
+let v7TerminalHostResizeObserver = null;
+function setupV7TerminalHostResizeObserver() {
   const host = $('#terminal-host');
+  if (!host || v7TerminalHostResizeObserver || typeof ResizeObserver !== 'function') return;
 
-  if (!host || typeof ResizeObserver !== 'function' || state.terminalHostResizeObserver) {
-    return;
-  }
-
-  state.terminalHostResizeObserver = new ResizeObserver(() => {
-    scheduleActiveTerminalFit();
+  let lastWidth = 0;
+  let lastHeight = 0;
+  let frameQueued = false;
+  const observer = new ResizeObserver((entries) => {
+    const rect = entries[0]?.contentRect;
+    if (!rect || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)) return;
+    // Avoid repeated fit and backend resize IPC when geometry is unchanged.
+    if (Math.abs(rect.width - lastWidth) < 1 && Math.abs(rect.height - lastHeight) < 1) return;
+    lastWidth = rect.width;
+    lastHeight = rect.height;
+    if (frameQueued) return;
+    frameQueued = true;
+    requestAnimationFrame(() => {
+      frameQueued = false;
+      const session = state.terminals.get(state.activeTerminalId);
+      // Even a disconnected/restored pinned tab needs a correctly sized
+      // *display*. fitTerminalSessionNow never resizes a closed PTY/SSH stream.
+      if (!session || !session.pane?.classList.contains('active')) return;
+      fitTerminalSessionNow(session);
+    });
   });
-
-  state.terminalHostResizeObserver.observe(host);
+  observer.observe(host);
+  v7TerminalHostResizeObserver = observer;
 }
 
 function openSecretModal(kind, server) {
@@ -12932,11 +8806,10 @@ function showRemoteAuthenticationIssue(server, issue) {
 }
 
 async function connectSelectedServer(options = {}) {
-  const configuredServer = getSelectedServer();
-  const requestedWorkingDirectory = normalizeTerminalLocation(options?.workingDirectory || '');
-  const server = configuredServer?.type === 'local' && requestedWorkingDirectory
-    ? { ...configuredServer, workingDirectory: requestedWorkingDirectory }
-    : configuredServer;
+  // A manual reconnect authenticates normally but does not select or reorder
+  // tabs in the background. Existing click listeners can also pass an Event.
+  const server = options?.serverOverride || getSelectedServer();
+  const background = options?.background === true;
 
   if (!server) {
     showToast('Select a server first.');
@@ -12979,12 +8852,11 @@ async function connectSelectedServer(options = {}) {
   let session = null;
 
   try {
-    session = createTerminalPane(terminalId, server);
-    session.workspaceRestoreWorkingDirectory = server.type === 'remote'
-      ? requestedWorkingDirectory
-      : '';
+    session = createTerminalPane(terminalId, server, { activate: !background });
+    session.pendingReconnectReplacement = background;
     session.status = 'connecting';
-    setTerminalStatus('connecting');
+    updateTerminalTabWorkingIndicator(session);
+    if (!background) setTerminalStatus('connecting');
     showToast(
       `${server.type === 'remote' ? 'Connecting to' : 'Opening'} ${server.name || server.host || 'terminal'}...`,
       4200,
@@ -13001,8 +8873,8 @@ async function connectSelectedServer(options = {}) {
     if (secretRequirement === 'password') {
       const password = await openSecretModal('password', server);
       if (password === null) {
-        closeTerminalSession(terminalId);
-        setActiveView(previousView || 'terminal');
+        closeTerminalSession(terminalId, { force: true, remember: false });
+        if (!background) setActiveView(previousView || 'terminal');
         showToast('Connection cancelled.', 3200, 'warning');
         return;
       }
@@ -13012,8 +8884,8 @@ async function connectSelectedServer(options = {}) {
     if (secretRequirement === 'passphrase-optional') {
       const passphrase = await openSecretModal('passphrase', server);
       if (passphrase === null) {
-        closeTerminalSession(terminalId);
-        setActiveView(previousView || 'terminal');
+        closeTerminalSession(terminalId, { force: true, remember: false });
+        if (!background) setActiveView(previousView || 'terminal');
         showToast('Connection cancelled.', 3200, 'warning');
         return;
       }
@@ -13026,8 +8898,8 @@ async function connectSelectedServer(options = {}) {
       const initialSize = getTerminalSize(session);
       const result = await window.advanceTerminal.createTerminal({
         terminalId,
-        serverId: configuredServer.id,
-        workingDirectory: server.type === 'local' ? requestedWorkingDirectory : '',
+        serverId: server.id,
+        ...(server.quickLocalShell ? { quickLocalShell: server.quickLocalShell } : {}),
         secrets,
         cols: initialSize.cols,
         rows: initialSize.rows
@@ -13055,10 +8927,11 @@ async function connectSelectedServer(options = {}) {
       session.authFailed = false;
       session.reconnectAttemptsUsed = 0;
       session.status = server.type === 'remote' ? 'connecting' : 'connected';
+      updateTerminalTabWorkingIndicator(session);
       session.report = ensureSessionReport(session);
       session.report.connectedAt = session.report.connectedAt || Date.now();
       session.report.lastUsageCheckpointAt = session.report.lastUsageCheckpointAt || Date.now();
-      setTerminalStatus(session.status);
+      if (state.activeTerminalId === session.terminalId) setTerminalStatus(session.status);
       recordDailySessionStarted(session);
       recordSessionEvent(
         session,
@@ -13073,13 +8946,12 @@ async function connectSelectedServer(options = {}) {
         server.type === 'remote' ? 'Waiting for the SSH prompt.' : 'Connection opened successfully.'
       );
       showTerminalSession(session);
+      persistSavedTerminalSessions();
 
       if (server.type !== 'remote') {
         session.connectionReadyNotified = true;
         showToast(`${server.name || 'Terminal'} is connected.`, 4000, 'success');
       }
-
-      return session;
     } catch (error) {
       session.cleanSshStartupActive = false;
       hideTerminalConnectingOverlay(session);
@@ -13089,8 +8961,14 @@ async function connectSelectedServer(options = {}) {
       updateConnectionHealthFromSession(server, 'error', error.message || 'Connection failed.');
       session.closed = true;
       session.status = 'error';
-      setTerminalStatus('error');
-      setActiveView(previousView || 'terminal');
+      updateTerminalTabWorkingIndicator(session);
+      persistSavedTerminalSessions();
+      if (state.activeTerminalId === session.terminalId) {
+        setTerminalStatus('error');
+        // Only restore the earlier view if this failed connection is still
+        // foreground; never interrupt an unrelated tab or page.
+        if (state.activeView === 'terminal') setActiveView(previousView || 'terminal');
+      }
 
       if (!['CONNECTION_BUSY', 'TERMINAL_BUSY'].includes(error.code)) {
         showToast(`Connection failed: ${error.message}`, 7000, 'error');
@@ -13100,8 +8978,6 @@ async function connectSelectedServer(options = {}) {
     state.connectionAttemptInFlight = false;
     updateTerminalInteractionState();
   }
-
-  return null;
 }
 
 function scheduleAutoReconnect(session, payload = {}) {
@@ -13116,6 +8992,7 @@ function scheduleAutoReconnect(session, payload = {}) {
   session.reconnectAttemptsUsed = nextAttempt;
   session.closed = false;
   session.status = 'reconnecting';
+  updateTerminalTabWorkingIndicator(session);
   clearReconnectTimer(session.terminalId);
 
   const message = `Auto reconnect ${nextAttempt}/${reliability.reconnectAttempts} in ${delaySeconds}s...`;
@@ -13138,6 +9015,7 @@ function scheduleAutoReconnect(session, payload = {}) {
       if (!scheduleAutoReconnect(session, { code: 'retry-error' })) {
         session.closed = true;
         session.status = 'disconnected';
+        updateTerminalTabWorkingIndicator(session);
         if (state.activeTerminalId === session.terminalId) {
           setTerminalStatus('disconnected');
         }
@@ -13157,6 +9035,7 @@ async function reconnectTerminalSession(session) {
 
   const server = session.server;
   session.status = 'connecting';
+  updateTerminalTabWorkingIndicator(session);
   session.connectionReadyNotified = false;
 
   if (server?.type === 'remote') {
@@ -13182,6 +9061,7 @@ async function reconnectTerminalSession(session) {
   const result = await window.advanceTerminal.createTerminal({
     terminalId: session.terminalId,
     serverId: server.id,
+    ...(server.quickLocalShell ? { quickLocalShell: server.quickLocalShell } : {}),
     secrets: {},
     cols: reconnectSize.cols,
     rows: reconnectSize.rows
@@ -13199,6 +9079,7 @@ async function reconnectTerminalSession(session) {
   session.authFailed = false;
   session.reconnectAttemptsUsed = 0;
   session.status = server?.type === 'remote' ? 'connecting' : 'connected';
+  updateTerminalTabWorkingIndicator(session);
   session.report = ensureSessionReport(session);
   session.report.connectedAt = session.report.connectedAt || Date.now();
   session.report.lastUsageCheckpointAt = Date.now();
@@ -13242,6 +9123,8 @@ function cleanupTerminalSessionResources(session) {
   session.processBusyTimer = null;
   session.processBusy = false;
   session.processLabel = '';
+  session.processOutputTail = '';
+  updateTerminalTabWorkingIndicator(session);
 
   (session.disposables || []).forEach((disposable) => {
     try {
@@ -13274,41 +9157,32 @@ function cleanupTerminalSessionResources(session) {
   session.terminalFocusHandler = null;
 }
 
-function closeTerminalSession(terminalId) {
+function closeTerminalSession(terminalId, { force = false, remember = true } = {}) {
   const id = terminalId || state.activeTerminalId;
   const session = state.terminals.get(id);
 
   if (!session) {
-    return Promise.resolve(null);
+    return false;
   }
-
-  const groupId = session.groupId || '';
-  const wasActive = state.activeTerminalId === id;
-  const wasActiveGroup = state.activeTerminalGroupId === groupId;
+  if (remember) rememberClosedTerminalTab(session);
+  closeTerminalTabContextMenu();
 
   cleanupTerminalSessionResources(session);
-  moveActiveSessionToHistory(session, 'Closed by user');
+  if (!session.restoredPinnedPlaceholder) {
+    moveActiveSessionToHistory(session, 'Closed by user');
+  }
   session.manualClose = true;
   session.closed = true;
   session.status = 'disconnected';
 
-  if (wasActive) {
+  if (state.activeTerminalId === id) {
     setTerminalStatus('disconnected');
   }
 
-  recordSessionEvent(
-    session,
-    splitGroupTerminalIds(getTerminalGroup(groupId)).length > 1
-      ? 'Terminal split pane closed by user.'
-      : 'Terminal tab closed by user.',
-    'system'
-  );
-
-  const closeRequest = Promise.resolve(window.advanceTerminal.closeTerminal({ terminalId: id }))
-    .catch((error) => {
-      appendActivityFeedEvent(`Terminal close cleanup warning: ${error.message}`, 'warning', { dedupeMs: 1200 });
-      return null;
-    });
+  if (!session.restoredPinnedPlaceholder) {
+    recordSessionEvent(session, 'Terminal tab closed by user.', 'system');
+    window.advanceTerminal.closeTerminal({ terminalId: id });
+  }
 
   try {
     session.term.dispose();
@@ -13321,44 +9195,33 @@ function closeTerminalSession(terminalId) {
   } catch (_) {
     // Ignore pane removal failure.
   }
-
   state.terminals.delete(id);
-  const remainingGroup = removeTerminalFromSplitGroup(id, groupId);
-
-  let nextTerminalId = null;
-
-  if (!wasActive && state.activeTerminalId && state.terminals.has(state.activeTerminalId)) {
-    nextTerminalId = state.activeTerminalId;
-  } else if (remainingGroup && wasActiveGroup) {
-    nextTerminalId = remainingGroup.activeTerminalId || getFirstTerminalIdInGroup(remainingGroup);
-  } else {
-    const currentGroup = getTerminalGroup(state.activeTerminalGroupId);
-    nextTerminalId = currentGroup?.activeTerminalId || getFirstTerminalIdInGroup(currentGroup);
-
-    if (!nextTerminalId) {
-      for (const group of state.terminalGroups.values()) {
-        nextTerminalId = group.activeTerminalId || getFirstTerminalIdInGroup(group);
-        if (nextTerminalId) break;
-      }
-    }
+  for (const child of state.terminals.values()) {
+    if (child.v7ParentId === id) child.v7ParentId = null;
   }
+  v7ComposerDrafts.delete(id);
+  updateTerminalTabNavigationButtons();
+  persistSavedTerminalSessions();
 
-  if (nextTerminalId && state.terminals.has(nextTerminalId)) {
-    activateTerminal(nextTerminalId);
+  // Closing another tab must never unexpectedly move focus from the active terminal.
+  const next = state.terminals.has(state.activeTerminalId)
+    ? state.activeTerminalId
+    : (Array.from(state.terminals.keys())[0] || null);
+  state.activeTerminalId = next;
+
+  if (next) {
+    activateTerminal(next);
   } else {
-    state.activeTerminalId = null;
-    state.activeTerminalGroupId = null;
-    $('#terminal-empty')?.classList.remove('hidden');
+    $('#terminal-empty').classList.remove('hidden');
     setTerminalHeaderTitle('Advance Terminal');
     setTerminalStatus('idle');
     updateTerminalLocationHeader(null);
     renderTerminalTabs();
-    renderTerminalToolbarActions();
     updateCurrentTabFooter();
     closeTerminalSearch({ focusActiveTerminal: false });
   }
-
-  return closeRequest;
+  syncV7CommandComposer();
+  return true;
 }
 
 function getActiveTerminalSession(actionName = 'terminal action') {
@@ -13386,10 +9249,14 @@ function activateTerminalAndFocus(terminalId) {
     return;
   }
 
+  const session = state.terminals.get(terminalId);
+  // Pointer and focus events on the already-active pane must not rebuild tabs
+  // and refit xterm; that caused avoidable work on ordinary interactions.
+  if (state.activeTerminalId === terminalId && state.activeView === 'terminal') {
+    return;
+  }
   setActiveView('terminal', 'terminal');
   activateTerminal(terminalId);
-
-  const session = state.terminals.get(terminalId);
 
   if (!session || session.closed) {
     return;
@@ -13406,36 +9273,43 @@ function clearActiveTerminal() {
 
   if (session) {
     if (!guardTerminalAction(session, 'Clear Screen', 'clear')) {
-      return;
+      return false;
     }
 
     try {
       session.term.clear();
       session.term.write('\x1b[3J\x1b[2J\x1b[H');
-      window.advanceTerminal.writeTerminal({
-        terminalId: session.terminalId,
-        data: '\x0c'
-      });
+      // Clear remains a local UI action while the connection is initializing.
+      // Don't send input into a PTY that does not exist yet.
+      if (!isTerminalSessionProcessing(session)) {
+        window.advanceTerminal.writeTerminal({
+          terminalId: session.terminalId,
+          data: '\x0c'
+        });
+      }
     } catch (_) {
-      // Ignore clear failure for closed or resizing terminals.
+      showToast('Unable to clear this terminal.', 3500, 'error');
+      return false;
     }
 
     recordSessionEvent(session, 'Terminal screen and scrollback cleared.', 'action');
     appendLiveConsole(`Terminal screen and scrollback cleared: ${session.server?.name || 'active terminal'}`, 'action');
     focusTerminal(session);
     showToast('Terminal screen cleared permanently.', 3500, 'success');
+    return true;
   }
+  return false;
 }
 
 async function copyAllActiveTerminal() {
   const session = getActiveTerminalSession('Copy All Screen');
 
   if (!session) {
-    return;
+    return false;
   }
 
   if (!guardTerminalAction(session, 'Copy All Screen', 'copyAll')) {
-    return;
+    return false;
   }
 
   const text = getTerminalBufferText(session.term);
@@ -13443,125 +9317,38 @@ async function copyAllActiveTerminal() {
   if (!text) {
     showToast('There is no terminal output to copy.');
     focusTerminal(session);
-    return;
+    return false;
   }
 
   await navigator.clipboard.writeText(text);
   focusTerminal(session);
   showToast('Copied all terminal screen output.');
-}
-
-async function writeTerminalSelectionToClipboard(session, options = {}) {
-  if (!session || session.closed) {
-    return false;
-  }
-
-  const selectedText = session.term?.getSelection?.() || '';
-
-  if (!selectedText) {
-    if (options.showEmptyMessage !== false) {
-      showToast('Select terminal text first.');
-    }
-
-    if (options.focus !== false) {
-      focusTerminal(session);
-    }
-
-    return false;
-  }
-
-  await navigator.clipboard.writeText(selectedText);
-
-  if (options.focus !== false) {
-    focusTerminal(session);
-  }
-
-  if (options.showToast !== false) {
-    showToast(options.toastMessage || 'Copied selected terminal text.', 2600, 'success');
-  }
-
   return true;
-}
-
-function installTerminalClipboardShortcuts(session) {
-  const term = session?.term;
-
-  if (!term || typeof term.attachCustomKeyEventHandler !== 'function') {
-    return;
-  }
-
-  term.attachCustomKeyEventHandler((event) => {
-    if (!event || event.type !== 'keydown') {
-      return true;
-    }
-
-    const modifierPressed = event.ctrlKey || event.metaKey;
-
-    if (!modifierPressed || event.altKey) {
-      return true;
-    }
-
-    const key = String(event.key || '').toLowerCase();
-
-    if (key === 'c') {
-      const hasSelection = Boolean(term.getSelection?.());
-
-      if (hasSelection) {
-        event.preventDefault();
-        writeTerminalSelectionToClipboard(session, {
-          focus: false,
-          toastMessage: event.shiftKey ? 'Copied selection (Ctrl+Shift+C).' : 'Copied selection (Ctrl+C).'
-        }).catch((error) => {
-          showToast(`Copy failed: ${error.message}`, 5000, 'error');
-        });
-        return false;
-      }
-
-      // No selection: preserve the shell's real Ctrl+C interrupt behavior.
-      return event.shiftKey ? false : true;
-    }
-
-    if (key === 'v') {
-      event.preventDefault();
-
-      navigator.clipboard.readText()
-        .then(async (text) => {
-          if (!text) {
-            showToast('Clipboard is empty.', 3000, 'warning');
-            focusTerminal(session);
-            return;
-          }
-
-          await writeClipboardTextToTerminal(
-            session,
-            text,
-            event.shiftKey ? 'Ctrl+Shift+V clipboard' : 'Ctrl+V clipboard'
-          );
-        })
-        .catch((error) => {
-          showToast(`Paste failed: ${error.message}`, 5000, 'error');
-          focusTerminal(session);
-        });
-
-      return false;
-    }
-
-    return true;
-  });
 }
 
 async function copySelectedTerminalText() {
   const session = getActiveTerminalSession('Copy Selection');
 
   if (!session) {
-    return;
+    return false;
   }
 
   if (!guardTerminalAction(session, 'Copy Selection', 'copySelection')) {
-    return;
+    return false;
   }
 
-  await writeTerminalSelectionToClipboard(session);
+  const selectedText = session.term.getSelection();
+
+  if (!selectedText) {
+    showToast('Select terminal text first.');
+    focusTerminal(session);
+    return false;
+  }
+
+  await navigator.clipboard.writeText(selectedText);
+  focusTerminal(session);
+  showToast('Copied selected terminal text.');
+  return true;
 }
 
 
@@ -13575,10 +9362,8 @@ function getPasteProtectionSettings() {
 
 function updatePasteProtectionControls() {
   const protection = getPasteProtectionSettings();
-  const terminalSafety = getTerminalSafetySettings();
   const multilineToggle = $('#safe-paste-multiline-toggle');
   const rightClickAutoEnterToggle = $('#right-click-auto-enter-toggle');
-  const busyActionLockToggle = $('#terminal-busy-action-lock-toggle');
   const sshLockToggle = $('#ssh-lock-start-folder-toggle');
 
   if (multilineToggle) {
@@ -13589,90 +9374,9 @@ function updatePasteProtectionControls() {
     rightClickAutoEnterToggle.checked = protection.rightClickAutoEnter;
   }
 
-  if (busyActionLockToggle) {
-    busyActionLockToggle.checked = terminalSafety.lockActionsWhileCommandRunning;
-  }
-
   if (sshLockToggle) {
     sshLockToggle.checked = protection.lockSshToStartFolder;
   }
-}
-
-function updateWindowsAdminControls() {
-  const row = $('#windows-admin-mode-row');
-  const status = $('#windows-admin-mode-status');
-  const button = $('#restart-as-admin-button');
-  const isWindows = state.appInfo?.platform === 'win32';
-  const isElevated = state.appInfo?.isElevated === true;
-
-  if (!row || !status || !button) {
-    return;
-  }
-
-  row.classList.toggle('hidden', !isWindows);
-  row.classList.toggle('is-elevated', isWindows && isElevated);
-
-  if (!isWindows) {
-    return;
-  }
-
-  if (isElevated) {
-    status.textContent = 'Advance Terminal is running as Administrator. New local PowerShell/CMD sessions inherit this elevated privilege.';
-    button.textContent = 'Running as Administrator';
-    button.disabled = true;
-    return;
-  }
-
-  status.textContent = 'Advance Terminal is running normally. Restart elevated when you need Administrator access in local terminal sessions.';
-  button.textContent = 'Restart as Administrator';
-  button.disabled = false;
-}
-
-async function restartAdvanceTerminalAsAdministrator() {
-  if (!window.advanceTerminal?.restartAsAdministrator) {
-    showToast('Administrator restart is not available in this build.', 6000, 'error');
-    return;
-  }
-
-  if (state.appInfo?.isElevated) {
-    showToast('Advance Terminal is already running as Administrator.', 4000, 'success');
-    return;
-  }
-
-  const confirmed = await showConfirmDialog({
-    title: 'Restart as Administrator?',
-    message: 'Windows will show a UAC prompt. Open terminal sessions will close during restart. After elevation, new local terminal sessions inherit Administrator access.',
-    confirmLabel: 'Restart as Administrator',
-    cancelLabel: 'Cancel'
-  });
-
-  if (!confirmed) {
-    return;
-  }
-
-  const button = $('#restart-as-admin-button');
-
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Requesting UAC...';
-  }
-
-  const result = await window.advanceTerminal.restartAsAdministrator();
-
-  if (!result?.ok) {
-    updateWindowsAdminControls();
-    showToast(result?.error || 'Administrator restart failed.', 7000, 'error');
-    return;
-  }
-
-  if (result.alreadyElevated) {
-    state.appInfo.isElevated = true;
-    updateWindowsAdminControls();
-    showToast('Advance Terminal is already running as Administrator.', 4000, 'success');
-    return;
-  }
-
-  showToast('Administrator restart started. Approve the Windows UAC prompt.', 5000, 'success');
 }
 
 async function updatePasteProtectionSetting(key, enabled) {
@@ -13691,34 +9395,6 @@ async function updatePasteProtectionSetting(key, enabled) {
   updatePasteProtectionControls();
   state.settings = await saveSettings({ toastMessage: '', debounce: true, refresh: false });
   updatePasteProtectionControls();
-}
-
-async function setTerminalBusyActionLock(enabled) {
-  if (!state.settings) {
-    return;
-  }
-
-  state.settings.ui = {
-    ...(state.settings.ui || {}),
-    terminalSafety: {
-      ...(state.settings.ui?.terminalSafety || {}),
-      lockActionsWhileCommandRunning: Boolean(enabled)
-    }
-  };
-
-  updatePasteProtectionControls();
-  updateTerminalInteractionState();
-  state.settings = await saveSettings({ toastMessage: '', debounce: true, refresh: false });
-  updatePasteProtectionControls();
-  updateTerminalInteractionState();
-
-  showToast(
-    enabled
-      ? 'Running-command action lock enabled. Paste and safe terminal actions stay available.'
-      : 'Running-command action lock disabled. Command actions can be sent while a process is running.',
-    4500,
-    enabled ? 'success' : 'warning'
-  );
 }
 
 async function setSafePasteMultilineProtection(enabled) {
@@ -13868,10 +9544,12 @@ async function writeClipboardTextToTerminal(session, text, sourceLabel, options 
     return false;
   }
 
-  const action = await choosePasteAction(text, sourceLabel);
+  const action = options?.requireMultilineConfirm === true && isMultilinePasteText(text)
+    ? await openSafePasteDialog({ text, sourceLabel })
+    : await choosePasteAction(text, sourceLabel);
 
   if (!action) {
-    focusTerminal(session);
+    if (options?.preserveFocus !== true) focusTerminal(session);
     showToast('Paste cancelled.', 3000, 'warning');
     recordSessionEvent(session, `${sourceLabel} paste cancelled.`, 'warning');
     return false;
@@ -13880,13 +9558,20 @@ async function writeClipboardTextToTerminal(session, text, sourceLabel, options 
   const data = action === 'single-line' ? collapsePasteToOneLine(text) : text;
 
   if (!data) {
-    focusTerminal(session);
+    if (options?.preserveFocus !== true) focusTerminal(session);
     showToast('Clipboard has no text to paste.', 'warning');
     return false;
   }
 
+  if (session.closed || !state.terminals.has(session.terminalId)
+      || (options?.requireActiveSession && state.activeTerminalId !== session.terminalId)) {
+    showToast('Command not sent: the active terminal changed or disconnected.', 3500, 'warning');
+    return false;
+  }
   const autoEnter = options?.autoEnter === true;
-  const terminalData = autoEnter ? appendTerminalEnterIfMissing(data) : data;
+  const normalizedData = options?.normalizeLineEndings === true
+    ? data.replace(/\r\n|\n|\r/g, '\r') : data;
+  const terminalData = autoEnter ? appendTerminalEnterIfMissing(normalizedData) : normalizedData;
   const sshLockResult = inspectSshLockedTerminalData(session, terminalData);
 
   if (sshLockResult.blocked) {
@@ -13908,58 +9593,18 @@ async function writeClipboardTextToTerminal(session, text, sourceLabel, options 
   const enterLabel = autoEnter ? ', then Enter' : '';
   recordSessionEvent(session, `${sourceLabel} paste (${data.length} characters, ${modeLabel}${enterLabel}).`, 'action');
   appendLiveConsole(`${sourceLabel} pasted into ${session.server?.name || 'active terminal'} (${data.length} characters, ${modeLabel}${enterLabel}).`, 'action');
-  focusTerminal(session);
-  showToast(
-    autoEnter
-      ? 'Pasted clipboard and sent Enter.'
-      : action === 'single-line'
-        ? 'Pasted clipboard as one line.'
-        : 'Pasted clipboard into terminal.',
-    'success'
-  );
-
-  return true;
-}
-
-async function typeTextToActiveTerminal(text, label = 'Type Text') {
-  const session = getActiveTerminalSession(label);
-
-  if (!session) {
-    return false;
+  if (options?.preserveFocus !== true) focusTerminal(session);
+  if (!options?.quiet) {
+    showToast(
+      autoEnter
+        ? 'Pasted clipboard and sent Enter.'
+        : action === 'single-line'
+          ? 'Pasted clipboard as one line.'
+          : 'Pasted clipboard into terminal.',
+      'success'
+    );
   }
 
-  if (!guardTerminalAction(session, label, 'typeText')) {
-    return false;
-  }
-
-  const payload = String(text || '').replace(/[\r\n]+/g, ' ');
-
-  if (!payload) {
-    showToast('Type Text action is empty.', 3500, 'warning');
-    focusTerminal(session);
-    return false;
-  }
-
-  const sshLockResult = inspectSshLockedTerminalData(session, payload);
-
-  if (sshLockResult.blocked) {
-    showSshPathLockBlocked(session, sshLockResult.reason);
-    return false;
-  }
-
-  applySshLockedLocationResult(session, sshLockResult);
-  session.sshTypedCommandBuffer = sshLockResult.trailing || '';
-
-  window.advanceTerminal.writeTerminal({
-    terminalId: session.terminalId,
-    data: payload
-  });
-
-  recordTerminalInput(session, payload);
-  recordSessionEvent(session, `${label} typed ${payload.length} characters without Enter.`, 'action');
-  appendLiveConsole(`${label} typed into ${session.server?.name || 'active terminal'} without Enter.`, 'action');
-  focusTerminal(session);
-  showToast(`${label} typed without Enter.`, 3200, 'success');
   return true;
 }
 
@@ -13967,7 +9612,7 @@ async function pasteClipboardToTerminal() {
   const session = getActiveTerminalSession('Paste');
 
   if (!session) {
-    return;
+    return false;
   }
 
   const text = await navigator.clipboard.readText();
@@ -13975,30 +9620,29 @@ async function pasteClipboardToTerminal() {
   if (!text) {
     showToast('Clipboard is empty.');
     focusTerminal(session);
-    return;
+    return false;
   }
 
-  await writeClipboardTextToTerminal(session, text, 'Toolbar clipboard');
+  return await writeClipboardTextToTerminal(session, text, 'Toolbar clipboard');
 }
 
-function sendControlToActiveTerminal(sequence, label, explicitActionKind = '') {
+function sendControlToActiveTerminal(sequence, label) {
   const session = getActiveTerminalSession(label);
 
   if (!session) {
-    return;
+    return false;
   }
 
-  const inferredActionKind = sequence === '\x03'
+  const actionKind = sequence === '\x03'
     ? 'ctrlC'
     : sequence === '\x0c'
       ? 'ctrlL'
       : sequence === '\x04'
         ? 'ctrlD'
         : 'sendText';
-  const actionKind = explicitActionKind || inferredActionKind;
 
   if (!guardTerminalAction(session, label, actionKind)) {
-    return;
+    return false;
   }
 
   window.advanceTerminal.writeTerminal({
@@ -14010,6 +9654,7 @@ function sendControlToActiveTerminal(sequence, label, explicitActionKind = '') {
   appendLiveConsole(`Sent ${label} to ${session.server?.name || 'active terminal'}.`, 'action');
   focusTerminal(session);
   showToast(`Sent ${label}.`);
+  return true;
 }
 
 function loadServerForm(serverId) {
@@ -14121,13 +9766,9 @@ function refreshAppAfterSettingsImport() {
 
   applyTheme(getUiTheme());
   applyNotificationPosition(getNotificationPosition());
-  updatePasteProtectionControls();
-  updateTerminalInteractionState();
   syncReportCustomRangeControls();
   ensureReportCustomRangeValues(state.currentReportDateFilter);
   renderTerminalToolbarActions();
-  renderTerminalProfileQuickMenu();
-  renderWorkspaceQuickMenu();
   updateConnectionFilterButtons();
   renderServerList();
   renderConnectionManageList();
@@ -14144,25 +9785,8 @@ function refreshAppAfterSettingsImport() {
     renderSettingsRestorePoints();
   }
 
-  if (!getWorkspaceById(state.editingWorkspaceId)) {
-    state.editingWorkspaceId = null;
-    state.workspaceDraftMode = false;
-  }
-
-  if (!getWorkspaceById(state.activeWorkspaceId)) {
-    state.activeWorkspaceId = null;
-  }
-
-  if (state.activeSettingsTab === 'workspaces') {
-    renderWorkspaceSettings();
-  }
-
   if (state.activeSettingsTab === 'terminal-actions') {
     renderTerminalActionsSettings();
-  }
-
-  if (state.activeSettingsTab === 'terminal-profiles') {
-    renderTerminalProfilesSettings();
   }
 
   if (state.activeSettingsTab === 'keys') {
@@ -14642,14 +10266,6 @@ function updateAddConnectionFormVisibility() {
     item.classList.toggle('hidden', !isRemote);
   });
 
-  $$('.local-add-only').forEach((item) => {
-    item.classList.toggle('hidden', isRemote);
-  });
-
-  if (!isRemote) {
-    populateLocalProfileDropdown($('#add-connection-profile')?.value || '');
-  }
-
   $$('.password-add-only').forEach((item) => {
     item.classList.toggle('hidden', !isRemote || authType !== 'password');
   });
@@ -15015,7 +10631,6 @@ function clearConnectionModalForm(defaultType = 'remote') {
   $('#add-connection-name').value = type === 'local' ? 'Local Terminal' : 'Advance Terminal';
   $('#add-connection-group').value = type === 'local' ? 'Local' : 'Ungrouped';
   updateConnectionGroupDatalist();
-  populateLocalProfileDropdown('');
   $('#add-connection-host').value = '';
   $('#add-connection-port').value = 22;
   $('#add-connection-username').value = '';
@@ -15052,7 +10667,6 @@ function populateConnectionModalFromServer(server) {
   $('#add-connection-name').value = server.name || (type === 'local' ? 'Local Terminal' : 'SSH Connection');
   $('#add-connection-group').value = getServerGroup(server);
   updateConnectionGroupDatalist();
-  populateLocalProfileDropdown(server.profileId || '');
   $('#add-connection-host').value = server.host || '';
   $('#add-connection-port').value = server.port || 22;
   $('#add-connection-username').value = server.username || '';
@@ -15136,7 +10750,6 @@ function getConnectionFromModal() {
 
   if (type === 'local') {
     server.shell = '';
-    server.profileId = String($('#add-connection-profile')?.value || getDefaultTerminalProfileId() || '');
     return server;
   }
 
@@ -15425,7 +11038,7 @@ function updateUpdaterUi(payload = state.updateStatus) {
   const checkButton = $('#check-updates-button');
 
   if (currentVersion) {
-    currentVersion.textContent = status.currentVersion || state.appInfo?.version || state.appInfo?.displayVersion || 'Advance Terminal V6';
+    currentVersion.textContent = status.currentVersion || state.appInfo?.version || state.appInfo?.displayVersion || 'Advance Terminal V7';
   }
 
   if (message) {
@@ -15554,7 +11167,7 @@ function updateAboutInfo() {
     userDataPath.textContent = state.appInfo.userDataPath;
   }
 
-  const displayVersion = state.appInfo.displayVersion || 'Advance Terminal V6';
+  const displayVersion = state.appInfo.displayVersion || 'Advance Terminal V7';
   const developer = state.appInfo.developer || 'Artlie Digital';
   const website = state.appInfo.website || 'www.artliedigital.com';
 
@@ -15585,17 +11198,10 @@ function updateAboutInfo() {
 
 
 function getCurrentTabLabel() {
-  const group = getTerminalGroup(state.activeTerminalGroupId);
-  const customTitle = normalizeTerminalTabTitle(group?.title);
-
-  if (customTitle) {
-    return customTitle;
-  }
-
   const session = state.terminals.get(state.activeTerminalId);
 
   if (session?.server?.name) {
-    return session.server.name;
+    return getTerminalTabTitle(session);
   }
 
   return 'No active tab';
@@ -15675,994 +11281,958 @@ function startRuntimeFooter() {
 }
 
 
+// v7 sidebar now uses a one-level parent/child hierarchy; legacy numbered-group
+// storage is intentionally left untouched for rollback, but never rendered.
 
-function getCommandPaletteRecentIds() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(COMMAND_PALETTE_RECENTS_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed)
-      ? parsed.map((value) => String(value || '').trim()).filter(Boolean).slice(0, COMMAND_PALETTE_MAX_RECENTS)
-      : [];
-  } catch (_) {
-    return [];
-  }
+// Each color is tuned for the dark workspace. Preserve legacy IDs from earlier
+// patches in display/menu lookups without silently rewriting saved tab data.
+const V7_SESSION_PALETTE = [
+  { color: '#d76559', name: 'Coral Red', idle: '#422725', hover: '#754039', active: '#a54e47', legacy: ['#ff746b'] },
+  { color: '#e99c57', name: 'Orange', idle: '#443020', hover: '#78502d', active: '#a96c37', legacy: [] },
+  { color: '#a0d96e', name: 'Lime Green', idle: '#293723', hover: '#4a6735', active: '#658d43', legacy: ['#a9f87c'] },
+  { color: '#e8ce66', name: 'Yellow', idle: '#3a3522', hover: '#6d6035', active: '#97843f', legacy: ['#fff6a5'] },
+  { color: '#77bff2', name: 'Sky Blue', idle: '#243442', hover: '#365d7b', active: '#477ea7', legacy: ['#b1dafe'] },
+  { color: '#e18ad3', name: 'Pink', idle: '#40283c', hover: '#72416d', active: '#98558f', legacy: ['#ff9ce0'] },
+  { color: '#b5a0ef', name: 'Lavender', idle: '#322b43', hover: '#584b82', active: '#7563ad', legacy: ['#e4b1ff', '#bcb6ee'] }
+];
+const V7_SESSION_COLORS = ['', ...V7_SESSION_PALETTE.map((item) => item.color)];
+
+function getV7SessionPaletteChoice(value) {
+  const normalized = normalizeTerminalTabColor(value);
+  return V7_SESSION_PALETTE.find((item) => item.color === normalized || item.legacy.includes(normalized)) || null;
 }
 
-function rememberCommandPaletteEntry(entryId) {
-  const normalizedId = String(entryId || '').trim();
 
-  if (!normalizedId) {
-    return;
-  }
 
-  const next = [
-    normalizedId,
-    ...getCommandPaletteRecentIds().filter((id) => id !== normalizedId)
-  ].slice(0, COMMAND_PALETTE_MAX_RECENTS);
-
-  try {
-    localStorage.setItem(COMMAND_PALETTE_RECENTS_STORAGE_KEY, JSON.stringify(next));
-  } catch (_) {
-    // Command Palette history is optional and must never block an action.
-  }
+// A terminal belongs to either a single top-level list or one submenu.
+// Parent links are display metadata only and never alter PTYs, SSH sessions,
+// command history, or tab ordering.
+function getV7SessionParent(session) {
+  if (!session?.v7ParentId || session.v7ParentId === session.terminalId) return null;
+  const parent = state.terminals.get(session.v7ParentId);
+  return parent && parent.pendingReconnectReplacement !== true && !parent.v7ParentId ? parent : null;
 }
 
-function commandPaletteText(value, maxLength = 180) {
-  const normalized = String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+// Sidebar order is independent of PTY/tab insertion order. An unsorted new
+// session appears at the end until the user moves it explicitly.
+function getV7OrderedSessions(items) {
+  return items.slice().sort((a, b) => {
+    const aa = Number.isSafeInteger(a.v7SidebarOrder) && a.v7SidebarOrder >= 0 ? a.v7SidebarOrder : Number.MAX_SAFE_INTEGER;
+    const bb = Number.isSafeInteger(b.v7SidebarOrder) && b.v7SidebarOrder >= 0 ? b.v7SidebarOrder : Number.MAX_SAFE_INTEGER;
+    return aa - bb;
+  });
 }
 
-function commandPaletteEntrySearchText(entry) {
-  return [
-    entry.title,
-    entry.subtitle,
-    entry.category,
-    entry.keywords,
-    entry.shortcut
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLocaleLowerCase();
+function getV7SessionChildren(parentId) {
+  return getV7OrderedSessions(Array.from(state.terminals.values()).filter((item) =>
+    item.pendingReconnectReplacement !== true && item.terminalId !== parentId && item.v7ParentId === parentId));
 }
 
-function commandPaletteSubsequenceScore(query, text) {
-  let queryIndex = 0;
-  let firstMatch = -1;
-  let lastMatch = -1;
-
-  for (let textIndex = 0; textIndex < text.length && queryIndex < query.length; textIndex += 1) {
-    if (text[textIndex] !== query[queryIndex]) {
-      continue;
-    }
-
-    if (firstMatch < 0) {
-      firstMatch = textIndex;
-    }
-
-    lastMatch = textIndex;
-    queryIndex += 1;
-  }
-
-  if (queryIndex !== query.length) {
-    return null;
-  }
-
-  const span = lastMatch - firstMatch + 1;
-  return 180 - Math.min(120, firstMatch) - Math.min(50, Math.max(0, span - query.length));
+function getV7SessionPeers(parentId = null, pinned = false) {
+  return getV7OrderedSessions(Array.from(state.terminals.values()).filter((item) => {
+    if (item.pendingReconnectReplacement === true) return false;
+    const parent = getV7SessionParent(item);
+    return parentId ? parent?.terminalId === parentId : !parent && item.tabPinned === pinned;
+  }));
 }
 
-function scoreCommandPaletteEntry(entry, rawQuery) {
-  const query = String(rawQuery || '').trim().toLocaleLowerCase();
-
-  if (!query) {
-    return 0;
-  }
-
-  const title = String(entry.title || '').toLocaleLowerCase();
-  const category = String(entry.category || '').toLocaleLowerCase();
-  const haystack = commandPaletteEntrySearchText(entry);
-  const tokens = query.split(/\s+/).filter(Boolean);
-
-  if (!tokens.every((token) => haystack.includes(token))) {
-    const compactQuery = query.replace(/\s+/g, '');
-
-    if (!compactQuery) {
-      return null;
-    }
-
-    const subsequence = commandPaletteSubsequenceScore(compactQuery, haystack.replace(/\s+/g, ''));
-
-    if (subsequence === null) {
-      return null;
-    }
-
-    return subsequence;
-  }
-
-  let score = 300;
-
-  if (title === query) {
-    score += 900;
-  } else if (title.startsWith(query)) {
-    score += 650;
-  } else if (title.includes(query)) {
-    score += 450;
-  }
-
-  if (category === query || category.startsWith(query)) {
-    score += 180;
-  }
-
-  tokens.forEach((token) => {
-    const titleIndex = title.indexOf(token);
-    const haystackIndex = haystack.indexOf(token);
-
-    if (titleIndex === 0) {
-      score += 120;
-    } else if (titleIndex > 0) {
-      score += Math.max(20, 85 - Math.min(65, titleIndex));
-    } else if (haystackIndex >= 0) {
-      score += Math.max(5, 35 - Math.min(30, haystackIndex));
-    }
+function getV7NextPeerOrder(parentId, pinned, exceptId = null) {
+  const siblings = getV7SessionPeers(parentId, pinned).filter((item) => item.terminalId !== exceptId);
+  // Materialize legacy insertion order first. Otherwise a newly assigned order
+  // would sort ahead of existing items that have no explicit order yet.
+  let next = siblings.reduce((max, item) => Math.max(max,
+    Number.isSafeInteger(item.v7SidebarOrder) && item.v7SidebarOrder >= 0 ? item.v7SidebarOrder : -1), -1) + 1;
+  siblings.forEach((item) => {
+    if (!Number.isSafeInteger(item.v7SidebarOrder) || item.v7SidebarOrder < 0) item.v7SidebarOrder = next++;
   });
-
-  return score;
+  return next;
 }
 
-function openPaletteSettingsTab(tab) {
-  setActiveView('settings', 'settings');
-  setSettingsTab(tab);
+// Above/below keeps the same level as the target. The center is the only
+// action that creates a submenu. Moving a parent carries its children along.
+function moveV7SessionRelative(sourceId, targetId, placement) {
+  if (!['before', 'after'].includes(placement) || sourceId === targetId) return false;
+  const source = state.terminals.get(sourceId);
+  const target = state.terminals.get(targetId);
+  if (!source || !target || source.pendingReconnectReplacement || target.pendingReconnectReplacement) return false;
+  const targetParent = getV7SessionParent(target);
+  if (targetParent && getV7SessionChildren(sourceId).length) {
+    showToast('Move the parent above or below another parent, or move its children out first.', 4000, 'warning');
+    return false;
+  }
+  const parentId = targetParent?.terminalId || null;
+  const pinned = parentId ? false : target.tabPinned === true;
+  const peers = getV7SessionPeers(parentId, pinned).filter((item) => item.terminalId !== sourceId);
+  const targetIndex = peers.findIndex((item) => item.terminalId === targetId);
+  if (targetIndex < 0) return false;
+  source.v7ParentId = parentId;
+  source.tabPinned = pinned;
+  peers.splice(targetIndex + (placement === 'after' ? 1 : 0), 0, source);
+  peers.forEach((item, index) => { item.v7SidebarOrder = index; });
+  if (targetParent) targetParent.v7Collapsed = false;
+  persistSavedTerminalSessions();
+  renderTerminalTabs();
+  return true;
 }
 
-function openPaletteHelpTab(tab) {
-  setActiveView('about', 'help');
-  setHelpTab(tab);
+function getV7SessionDropPlacement(event, row) {
+  const rect = row.getBoundingClientRect();
+  const position = (event.clientY - rect.top) / Math.max(1, rect.height);
+  return position < 0.3 ? 'before' : position > 0.7 ? 'after' : 'inside';
 }
 
-function buildCommandPaletteEntries() {
-  const entries = [];
-  const add = (entry) => {
-    if (!entry?.id || !entry?.title || typeof entry.run !== 'function') {
-      return;
-    }
-
-    entries.push({
-      icon: '⌘',
-      category: 'Action',
-      subtitle: '',
-      keywords: '',
-      shortcut: '',
-      ...entry,
-      id: String(entry.id),
-      title: String(entry.title),
-      category: String(entry.category || 'Action')
-    });
-  };
-
-  add({
-    id: 'navigation:terminal',
-    icon: '>_',
-    category: 'Navigation',
-    title: 'Go to Terminal',
-    subtitle: 'Open the main terminal workspace.',
-    keywords: 'home console shell',
-    run: () => setActiveView('terminal', 'terminal')
-  });
-
-  add({
-    id: 'navigation:connections',
-    icon: 'PC',
-    category: 'Navigation',
-    title: 'Show Connections',
-    subtitle: 'Open the Terminal view and show saved Local / SSH connections.',
-    keywords: 'servers sidebar local ssh',
-    run: () => {
-      setActiveView('terminal', 'terminal');
-      setLeftTab('connections');
-      setConnectionsPanelCollapsed(false);
-    }
-  });
-
-  add({
-    id: 'navigation:commands',
-    icon: 'CMD',
-    category: 'Navigation',
-    title: 'Show Saved Commands',
-    subtitle: 'Open the command shortcuts panel.',
-    keywords: 'shortcuts scripts saved commands sidebar',
-    run: () => {
-      setActiveView('terminal', 'terminal');
-      setLeftTab('commands');
-      setConnectionsPanelCollapsed(false);
-    }
-  });
-
-  add({
-    id: 'connection:new-ssh',
-    icon: 'SSH',
-    category: 'Connection',
-    title: 'New SSH Connection',
-    subtitle: 'Create a new saved SSH connection.',
-    keywords: 'remote server add connection',
-    run: () => openAddConnectionModal('remote', true)
-  });
-
-  add({
-    id: 'connection:new-local',
-    icon: 'LOC',
-    category: 'Connection',
-    title: 'New Local Connection',
-    subtitle: 'Create a new saved local terminal connection.',
-    keywords: 'shell powershell cmd add connection',
-    run: () => openAddConnectionModal('local', true)
-  });
-
-  add({
-    id: 'commands:manage',
-    icon: 'CMD',
-    category: 'Commands',
-    title: 'Manage Saved Commands',
-    subtitle: 'Create, edit, duplicate, or delete command shortcuts.',
-    keywords: 'command manager shortcuts scripts',
-    run: () => openCommandManagerModal()
-  });
-
-  add({
-    id: 'terminal:find',
-    icon: '⌕',
-    category: 'Terminal',
-    title: 'Find in Active Terminal',
-    subtitle: 'Search output in the currently active terminal.',
-    keywords: 'search output buffer find',
-    shortcut: 'Ctrl+F',
-    run: () => {
-      setActiveView('terminal', 'terminal');
-      openTerminalSearch();
-    }
-  });
-
-  add({
-    id: 'terminal:split-right',
-    icon: '▦',
-    category: 'Terminal',
-    title: 'Split Terminal Right',
-    subtitle: 'Choose a profile or connection for a new pane to the right of the active terminal.',
-    keywords: 'split pane right side by side terminal profile ssh local',
-    run: () => {
-      setActiveView('terminal', 'terminal');
-      requestAnimationFrame(() => {
-        const button = $('#terminal-tab-split-button');
-        if (button) showTerminalSplitPicker(button, 'row');
-        else showToast('Open a terminal first before creating a split.', 3500, 'warning');
-      });
-    }
-  });
-
-  add({
-    id: 'terminal:split-down',
-    icon: '▤',
-    category: 'Terminal',
-    title: 'Split Terminal Down',
-    subtitle: 'Choose a profile or connection for a new pane below the active terminal.',
-    keywords: 'split pane down below horizontal terminal profile ssh local',
-    run: () => {
-      setActiveView('terminal', 'terminal');
-      requestAnimationFrame(() => {
-        const button = $('#terminal-tab-split-button');
-        if (button) showTerminalSplitPicker(button, 'column');
-        else showToast('Open a terminal first before creating a split.', 3500, 'warning');
-      });
-    }
-  });
-
-  add({
-    id: 'terminal:focus-next-pane',
-    icon: '→',
-    category: 'Terminal',
-    title: 'Focus Next Split Pane',
-    subtitle: 'Move keyboard focus to the next terminal pane in the active tab.',
-    keywords: 'split pane next focus terminal',
-    run: () => focusNextSplitPane()
-  });
-
-  add({
-    id: 'terminal:swap-next-pane',
-    icon: '⇄',
-    category: 'Terminal',
-    title: 'Swap Active Pane With Next',
-    subtitle: 'Move the active terminal session to the next pane position.',
-    keywords: 'split pane move swap reorder terminal',
-    run: () => swapActiveSplitPaneWithNext()
-  });
-
-  add({
-    id: 'view:activity-feed',
-    icon: 'LOG',
-    category: 'View',
-    title: 'Toggle Activity Feed',
-    subtitle: 'Open or close the Activity Feed.',
-    keywords: 'logs events console activity dock',
-    run: () => toggleLiveConsole()
-  });
-
-  add({
-    id: 'view:appearance',
-    icon: 'UI',
-    category: 'View',
-    title: 'Open Appearance',
-    subtitle: 'Open View and appearance controls.',
-    keywords: 'theme dark light notifications interface',
-    run: () => setActiveView('view', 'view')
-  });
-
-  [
-    ['safety', 'Terminal Safety', 'Paste protection, busy-action locking, SSH folder lock and Administrator controls.', 'SAFE'],
-    ['restore', 'Restore Points', 'View and restore safe local settings snapshots.', '↶'],
-    ['workspaces', 'Workspaces', 'Save and restore terminal tabs, split panes, folders, toolbar layout and window placement.', 'WS'],
-    ['terminal-profiles', 'Terminal Profiles', 'Manage PowerShell, CMD, Git Bash, WSL and custom local shell profiles.', '>_'],
-    ['terminal-actions', 'Terminal Actions', 'Manage the customizable terminal action toolbar.', 'ACT'],
-    ['ai', 'AI Settings', 'Configure AI-assisted report settings.', 'AI'],
-    ['keys', 'SSH Keys', 'Manage SSH keys and key locations.', 'KEY'],
-    ['updates', 'Updates', 'Check for Advance Terminal updates.', 'UP']
-  ].forEach(([tab, title, subtitle, icon]) => {
-    add({
-      id: `settings:${tab}`,
-      icon,
-      category: 'Settings',
-      title: `Open ${title}`,
-      subtitle,
-      keywords: `settings ${title}`,
-      run: () => openPaletteSettingsTab(tab)
-    });
-  });
-
-  add({
-    id: 'workspace:save-current',
-    icon: 'WS',
-    category: 'Workspace',
-    title: state.activeWorkspaceId && getWorkspaceById(state.activeWorkspaceId)
-      ? `Update Workspace: ${getWorkspaceById(state.activeWorkspaceId).name}`
-      : 'Save Current Workspace',
-    subtitle: 'Capture the current terminal tabs, working folders, toolbar layout and window placement.',
-    keywords: 'workspace save capture layout tabs folders toolbar window',
-    run: () => saveCurrentWorkspaceQuick()
-  });
-
-  getWorkspaces().forEach((workspace) => {
-    const missing = (workspace.sessions || []).filter((item) => !workspaceSessionTarget(item)).length;
-
-    add({
-      id: `workspace:${workspace.id}`,
-      icon: 'WS',
-      category: 'Workspace',
-      title: `Open Workspace: ${workspace.name}`,
-      subtitle: commandPaletteText([
-        `${workspaceSavedTabCount(workspace)} saved tab${workspaceSavedTabCount(workspace) === 1 ? '' : 's'} · ${workspaceSavedPaneCount(workspace)} pane${workspaceSavedPaneCount(workspace) === 1 ? '' : 's'}`,
-        state.settings?.startupWorkspaceId === workspace.id ? 'Startup workspace' : '',
-        missing ? `${missing} missing target${missing === 1 ? '' : 's'}` : ''
-      ].filter(Boolean).join(' · ')),
-      keywords: `workspace restore open layout ${workspace.name}`,
-      run: () => restoreWorkspace(workspace.id)
-    });
-  });
-
-  add({
-    id: 'windows:restart-admin',
-    icon: 'UAC',
-    category: 'Windows',
-    title: state.appInfo?.isElevated ? 'Running as Administrator' : 'Restart as Administrator',
-    subtitle: state.appInfo?.isElevated
-      ? 'Advance Terminal is already elevated.'
-      : 'Restart Advance Terminal elevated using the standard Windows UAC prompt.',
-    keywords: 'admin administrator elevated privilege uac windows',
-    run: () => restartAdvanceTerminalAsAdministrator()
-  });
-
-  add({
-    id: 'report:open',
-    icon: 'REP',
-    category: 'Navigation',
-    title: 'Open Reports',
-    subtitle: 'Open activity report options and history.',
-    keywords: 'reports audit work activity history',
-    run: () => setActiveView('report', 'report')
-  });
-
-  add({
-    id: 'help:quick-start',
-    icon: '?',
-    category: 'Help',
-    title: 'Open Quick Start',
-    subtitle: 'Open the built-in Advance Terminal quick-start guide.',
-    keywords: 'help guide documentation getting started',
-    run: () => openPaletteHelpTab('quick-start')
-  });
-
-  add({
-    id: 'help:about',
-    icon: 'i',
-    category: 'Help',
-    title: 'About Advance Terminal',
-    subtitle: 'Open version and application information.',
-    keywords: 'help version about info',
-    run: () => openPaletteHelpTab('about')
-  });
-
-
-  const activeTabGroup = getTerminalGroup(state.activeTerminalGroupId);
-
-  if (activeTabGroup) {
-    add({
-      id: 'tab:rename-active',
-      icon: 'TAB',
-      category: 'Tab',
-      title: 'Rename Active Tab',
-      subtitle: `Current tab: ${getTerminalGroupDisplayTitle(activeTabGroup)}`,
-      keywords: 'tab rename title label',
-      run: () => openTerminalTabRenameModal(activeTabGroup.id)
-    });
-
-    add({
-      id: 'tab:pin-active',
-      icon: 'PIN',
-      category: 'Tab',
-      title: activeTabGroup.pinned ? 'Unpin Active Tab' : 'Pin Active Tab',
-      subtitle: activeTabGroup.pinned
-        ? 'Allow the active tab to be closed or moved with normal tabs.'
-        : 'Keep the active tab protected and grouped with pinned tabs.',
-      keywords: 'tab pin unpin protect',
-      run: () => setTerminalGroupPinned(activeTabGroup.id, !activeTabGroup.pinned)
-    });
-
-    add({
-      id: 'tab:duplicate-active',
-      icon: 'TAB',
-      category: 'Tab',
-      title: 'Duplicate Active Tab',
-      subtitle: 'Open a new copy of this tab, including its split-pane layout.',
-      keywords: 'tab duplicate clone copy split',
-      run: () => duplicateTerminalGroup(activeTabGroup.id)
-    });
-
-    add({
-      id: 'tab:close-others',
-      icon: '×',
-      category: 'Tab',
-      title: 'Close Other Tabs',
-      subtitle: 'Close all unpinned tabs except the active tab.',
-      keywords: 'tab close others',
-      run: () => closeOtherTerminalGroups(activeTabGroup.id)
-    });
-
-    add({
-      id: 'tab:close-right',
-      icon: '×',
-      category: 'Tab',
-      title: 'Close Tabs to the Right',
-      subtitle: 'Close unpinned tabs positioned to the right of the active tab.',
-      keywords: 'tab close right',
-      run: () => closeTerminalGroupsToRight(activeTabGroup.id)
-    });
-  }
-
-  if (state.closedTerminalTabs?.length) {
-    add({
-      id: 'tab:reopen-closed',
-      icon: '↶',
-      category: 'Tab',
-      title: 'Reopen Last Closed Tab',
-      subtitle: 'Restore the most recently closed tab and its split-pane layout.',
-      keywords: 'tab reopen restore closed undo',
-      run: () => reopenLastClosedTerminalTab()
-    });
-  }
-
-  getTerminalProfiles().forEach((profile) => {
-    add({
-      id: `profile:${profile.id}`,
-      icon: commandPaletteText(profile.icon || '>_', 4) || '>_',
-      category: 'Terminal Profile',
-      title: `New Terminal: ${profile.name}`,
-      subtitle: commandPaletteText([
-        terminalProfileKindLabel(profile.kind),
-        profile.executable,
-        profile.workingDirectory ? `Start: ${profile.workingDirectory}` : ''
-      ].filter(Boolean).join(' · ')),
-      keywords: `profile shell ${profile.kind} ${profile.executable} ${profile.workingDirectory || ''}`,
-      run: () => launchTerminalProfile(profile.id)
-    });
-  });
-
-  sortConnectionsForDisplay([...(state.settings?.servers || [])]).forEach((server) => {
-    const isLocal = server.type === 'local';
-
-    add({
-      id: `connection:${server.id}`,
-      icon: isLocal ? 'LOC' : 'SSH',
-      category: isLocal ? 'Local Connection' : 'SSH Connection',
-      title: server.name || (isLocal ? 'Local Terminal' : 'SSH Connection'),
-      subtitle: commandPaletteText(serverSubtitle(server)),
-      keywords: [
-        'connection',
-        isLocal ? 'local terminal shell' : 'ssh remote server',
-        server.host,
-        server.username,
-        server.group,
-        server.description
-      ].filter(Boolean).join(' '),
-      run: () => openTerminalFromTabPicker(server)
-    });
-  });
-
-  Array.from(state.terminals.values())
-    .filter((session) => session && !session.closed)
-    .forEach((session) => {
-      const isActive = session.terminalId === state.activeTerminalId;
-      const isLocal = session.server?.type === 'local';
-
-      add({
-        id: `tab:${session.terminalId}`,
-        icon: 'TAB',
-        category: 'Open Tab',
-        title: session.server?.name || 'Terminal',
-        subtitle: commandPaletteText([
-          isActive ? 'Current tab' : 'Switch to open tab',
-          isLocal ? 'Local' : 'SSH',
-          session.status || ''
-        ].filter(Boolean).join(' · ')),
-        keywords: `tab terminal ${isLocal ? 'local' : 'ssh'} ${session.server?.host || ''}`,
-        run: () => {
-          setActiveView('terminal', 'terminal');
-          activateTerminalAndFocus(session.terminalId);
-        }
-      });
-    });
-
-  getCommands().forEach((command) => {
-    add({
-      id: `command:${command.id}`,
-      icon: 'CMD',
-      category: 'Saved Command',
-      title: command.name || 'Saved Command',
-      subtitle: commandPaletteText(redactSecrets(command.command)),
-      keywords: [
-        'saved command shortcut run',
-        command.category,
-        command.description,
-        redactSecrets(command.command)
-      ].filter(Boolean).join(' '),
-      run: () => sendCommandToActiveTerminal(command)
-    });
-  });
-
-  getTerminalToolbarActions()
-    .filter((action) => action.enabled !== false)
-    .filter((action) => action.itemType !== 'separator')
-    .filter((action) => terminalToolbarItemMatchesContext(action))
-    .forEach((action) => {
-      const normalized = normalizeTerminalToolbarAction(action);
-      const shortcut = normalizeTerminalToolbarShortcut(normalized.shortcut);
-
-      add({
-        id: `terminal-action:${normalized.id}`,
-        icon: commandPaletteText(normalized.customIcon || normalized.icon || 'ACT', 4) || 'ACT',
-        category: 'Terminal Action',
-        title: normalized.name || terminalActionKindLabel(normalized.action),
-        subtitle: commandPaletteText([
-          terminalActionKindLabel(normalized.action),
-          shortcut,
-          normalized.dropdown ? `Dropdown: ${normalized.dropdown}` : '',
-          normalized.group ? `Group: ${normalized.group}` : '',
-          redactSecrets(normalized.text || '')
-        ].filter(Boolean).join(' · ')),
-        keywords: `toolbar action ${normalized.action} ${shortcut} ${normalized.group} ${normalized.dropdown} ${redactSecrets(normalized.text || '')}`,
-        run: () => executeTerminalToolbarAction(normalized)
-      });
-    });
-
-  return entries;
+function showV7SessionDropPreview(row, placement) {
+  row.classList.toggle('is-drop-before', placement === 'before');
+  row.classList.toggle('is-drop-target', placement === 'inside');
+  row.classList.toggle('is-drop-after', placement === 'after');
 }
 
-function filterCommandPaletteEntries(query) {
-  const recentIds = getCommandPaletteRecentIds();
-  const recentRank = new Map(recentIds.map((id, index) => [id, index]));
-  const trimmedQuery = String(query || '').trim();
-
-  return state.commandPaletteEntries
-    .map((entry) => ({
-      entry,
-      score: scoreCommandPaletteEntry(entry, trimmedQuery),
-      recentIndex: recentRank.has(entry.id) ? recentRank.get(entry.id) : Number.POSITIVE_INFINITY
-    }))
-    .filter((item) => item.score !== null)
-    .sort((left, right) => {
-      if (!trimmedQuery && left.recentIndex !== right.recentIndex) {
-        return left.recentIndex - right.recentIndex;
-      }
-
-      if (trimmedQuery && right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      if (left.recentIndex !== right.recentIndex) {
-        return left.recentIndex - right.recentIndex;
-      }
-
-      const categoryCompare = left.entry.category.localeCompare(right.entry.category);
-
-      if (categoryCompare !== 0) {
-        return categoryCompare;
-      }
-
-      return left.entry.title.localeCompare(right.entry.title);
-    })
-    .slice(0, COMMAND_PALETTE_MAX_RESULTS)
-    .map((item) => ({
-      ...item.entry,
-      isRecent: Number.isFinite(item.recentIndex)
-    }));
+function detachV7Session(terminalId, { refresh = true } = {}) {
+  const session = state.terminals.get(terminalId);
+  if (!session || !session.v7ParentId) return false;
+  session.v7ParentId = null;
+  session.v7SidebarOrder = getV7NextPeerOrder(null, session.tabPinned, terminalId);
+  if (refresh) {
+    persistSavedTerminalSessions();
+    renderV7MinimalSessionList();
+  }
+  return true;
 }
 
-function setCommandPaletteSelectedIndex(index, { scroll = true } = {}) {
-  const count = state.commandPaletteResults.length;
-
-  if (!count) {
-    state.commandPaletteSelectedIndex = 0;
-    $('#command-palette-input')?.removeAttribute('aria-activedescendant');
-    return;
+function nestV7Session(sourceId, targetId) {
+  const source = state.terminals.get(sourceId);
+  const target = state.terminals.get(targetId);
+  if (!source || !target || source === target || source.pendingReconnectReplacement || target.pendingReconnectReplacement) return false;
+  // Dropping on a child nests the source alongside that child, never a third level.
+  const parent = getV7SessionParent(target) || target;
+  if (source === parent || source.v7ParentId === parent.terminalId) return false;
+  if (getV7SessionChildren(sourceId).length) {
+    showToast('Move this session’s children out before nesting it.', 4000, 'warning');
+    return false;
   }
-
-  const normalized = ((Number(index) || 0) % count + count) % count;
-  state.commandPaletteSelectedIndex = normalized;
-
-  $$('.command-palette-result').forEach((item, itemIndex) => {
-    const selected = itemIndex === normalized;
-    item.classList.toggle('selected', selected);
-    item.setAttribute('aria-selected', selected ? 'true' : 'false');
-
-    if (selected && scroll) {
-      item.scrollIntoView({ block: 'nearest' });
-    }
-  });
-
-  const selectedItem = $$('.command-palette-result')[normalized];
-
-  if (selectedItem?.id) {
-    $('#command-palette-input')?.setAttribute('aria-activedescendant', selectedItem.id);
-  }
+  source.v7ParentId = parent.terminalId;
+  source.tabPinned = false; // A nested row follows its parent; no duplicate pinned entry.
+  source.v7SidebarOrder = getV7NextPeerOrder(parent.terminalId, false, sourceId);
+  parent.v7Collapsed = false;
+  persistSavedTerminalSessions();
+  renderTerminalTabs();
+  return true;
 }
 
-function renderCommandPaletteResults() {
-  const input = $('#command-palette-input');
-  const results = $('#command-palette-results');
-  const summary = $('#command-palette-summary');
-
-  if (!input || !results) {
-    return;
-  }
-
-  const query = input.value || '';
-  state.commandPaletteResults = filterCommandPaletteEntries(query);
-
-  if (state.commandPaletteSelectedIndex >= state.commandPaletteResults.length) {
-    state.commandPaletteSelectedIndex = 0;
-  }
-
-  results.innerHTML = '';
-
-  if (!state.commandPaletteResults.length) {
-    const empty = document.createElement('div');
-    empty.className = 'command-palette-empty';
-    empty.innerHTML = '<strong>No matching actions</strong><span>Try a command name, profile, connection, tab, or Settings page.</span>';
-    results.appendChild(empty);
-
-    if (summary) {
-      summary.textContent = query.trim() ? `No results for “${commandPaletteText(query, 48)}”.` : 'No actions are currently available.';
-    }
-
-    input.removeAttribute('aria-activedescendant');
-    return;
-  }
-
-  state.commandPaletteResults.forEach((entry, index) => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.id = `command-palette-result-${index}`;
-    item.className = 'command-palette-result';
-    item.setAttribute('role', 'option');
-    item.setAttribute('aria-selected', index === state.commandPaletteSelectedIndex ? 'true' : 'false');
-    item.dataset.paletteIndex = String(index);
-
-    const icon = document.createElement('span');
-    icon.className = 'command-palette-result-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = commandPaletteText(entry.icon || '⌘', 4);
-
-    const copy = document.createElement('span');
-    copy.className = 'command-palette-result-copy';
-
-    const titleRow = document.createElement('span');
-    titleRow.className = 'command-palette-result-title-row';
-
-    const title = document.createElement('strong');
-    title.className = 'command-palette-result-title';
-    title.textContent = entry.title;
-    titleRow.appendChild(title);
-
-    if (entry.isRecent) {
-      const recent = document.createElement('span');
-      recent.className = 'command-palette-recent';
-      recent.textContent = 'Recent';
-      titleRow.appendChild(recent);
-    }
-
-    const subtitle = document.createElement('span');
-    subtitle.className = 'command-palette-result-subtitle';
-    subtitle.textContent = entry.subtitle || entry.keywords || entry.category;
-
-    copy.appendChild(titleRow);
-    copy.appendChild(subtitle);
-
-    const meta = document.createElement('span');
-    meta.className = 'command-palette-result-meta';
-
-    const category = document.createElement('span');
-    category.className = 'command-palette-result-category';
-    category.textContent = entry.category;
-    meta.appendChild(category);
-
-    if (entry.shortcut) {
-      const shortcut = document.createElement('kbd');
-      shortcut.textContent = entry.shortcut;
-      meta.appendChild(shortcut);
-    }
-
-    item.appendChild(icon);
-    item.appendChild(copy);
-    item.appendChild(meta);
-
-    item.addEventListener('mousemove', () => {
-      if (state.commandPaletteSelectedIndex !== index) {
-        setCommandPaletteSelectedIndex(index, { scroll: false });
-      }
-    });
-
-    item.addEventListener('click', () => {
-      runCommandPaletteEntry(entry).catch((error) => {
-        showToast(`Command Palette action failed: ${error.message}`, 7000, 'error');
-      });
-    });
-
-    results.appendChild(item);
-  });
-
-  if (summary) {
-    const count = state.commandPaletteResults.length;
-    summary.textContent = query.trim()
-      ? `${count} result${count === 1 ? '' : 's'} for “${commandPaletteText(query, 48)}”.`
-      : `${count} action${count === 1 ? '' : 's'} available · recent actions are shown first.`;
-  }
-
-  setCommandPaletteSelectedIndex(state.commandPaletteSelectedIndex, { scroll: false });
+function toggleV7SessionChildren(terminalId) {
+  const parent = state.terminals.get(terminalId);
+  if (!parent || !getV7SessionChildren(terminalId).length) return;
+  parent.v7Collapsed = !parent.v7Collapsed;
+  persistSavedTerminalSessions();
+  renderV7MinimalSessionList();
 }
 
-function refreshCommandPalette() {
-  state.commandPaletteEntries = buildCommandPaletteEntries();
-  state.commandPaletteSelectedIndex = 0;
-  renderCommandPaletteResults();
+function moveV7SessionToSection(terminalId, pinned) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return false;
+  session.v7ParentId = null;
+  session.tabPinned = pinned;
+  session.v7SidebarOrder = getV7NextPeerOrder(null, pinned, terminalId);
+  persistSavedTerminalSessions();
+  renderTerminalTabs();
+  return true;
 }
 
-function openCommandPalette(initialQuery = '') {
-  const modal = $('#command-palette-modal');
-  const input = $('#command-palette-input');
-
-  if (!modal || !input) {
-    return;
-  }
-
-  const blockingModal = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-    .find((item) => item.id !== 'command-palette-modal');
-
-  if (blockingModal) {
-    showToast('Finish or close the current dialog before opening Command Palette.', 3500, 'warning');
-    return;
-  }
-
-  closeQuickActionsMenu();
-  closeTerminalProfileQuickMenu();
-  closeWorkspaceQuickMenu();
+function showV7SessionActionsMenu(terminalId, anchor, returnFocus = null) {
+  const session = state.terminals.get(terminalId);
+  if (!session) return;
+  closeTerminalTabContextMenu();
   closeTerminalTabPicker();
-  closeTerminalSplitPicker();
+  hideSidebarContextMenu();
 
-  state.commandPalettePreviousFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  state.commandPaletteOpen = true;
-  input.value = String(initialQuery || '');
+  const menu = document.createElement('div');
+  menu.className = 'terminal-tab-context-menu v7-session-context-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', `Actions for ${getTerminalTabTitle(session)}`);
+  menu.append(
+    terminalTabMenuButton(session.tabPinned ? 'Unpin' : 'Pin', () => setTerminalTabPinned(terminalId, !session.tabPinned)),
+    terminalTabMenuButton('Reconnect', () => reconnectTerminalTab(terminalId), !session.closed),
+    ...(session.v7ParentId ? [terminalTabMenuButton('Move out of submenu', () => detachV7Session(terminalId))] : []),
+    terminalTabMenuButton('Rename', () => openTerminalTabRenameModal(terminalId)),
+    terminalTabMenuButton('Close', () => closeTerminalSession(terminalId, { force: true }), false, true)
+  );
 
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-  refreshCommandPalette();
-
-  appendActivityFeedEvent('Command Palette opened.', 'action', { dedupeMs: 800 });
-
-  requestAnimationFrame(() => {
-    input.focus();
-    input.select();
+  const divider = document.createElement('div');
+  divider.className = 'terminal-tab-context-divider';
+  menu.appendChild(divider);
+  const colors = document.createElement('div');
+  colors.className = 'v7-session-color-list';
+  colors.setAttribute('role', 'group');
+  colors.setAttribute('aria-label', 'Session color');
+  V7_SESSION_COLORS.forEach((color) => {
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'v7-session-color-option';
+    const paletteChoice = getV7SessionPaletteChoice(color);
+    if (!color) dot.classList.add('is-clear');
+    else dot.style.setProperty('--v7-swatch', color);
+    dot.setAttribute('aria-label', color ? `Set session color ${paletteChoice?.name || color}` : 'Clear session color');
+    // Older saved swatches still appear selected without modifying persisted data.
+    dot.setAttribute('aria-pressed', String((getV7SessionPaletteChoice(session.tabColor)?.color || normalizeTerminalTabColor(session.tabColor)) === color));
+    dot.title = paletteChoice?.name || 'No color';
+    dot.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setTerminalTabColor(terminalId, color);
+      closeTerminalTabContextMenu();
+    });
+    colors.appendChild(dot);
   });
-}
-
-function closeCommandPalette({ restoreFocus = true } = {}) {
-  const modal = $('#command-palette-modal');
-
-  if (!modal || modal.classList.contains('hidden')) {
-    state.commandPaletteOpen = false;
-    return;
-  }
-
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
-  state.commandPaletteOpen = false;
-  state.commandPaletteResults = [];
-  $('#command-palette-input')?.removeAttribute('aria-activedescendant');
-
-  const previousFocus = state.commandPalettePreviousFocus;
-  state.commandPalettePreviousFocus = null;
-
-  if (!restoreFocus) {
-    return;
-  }
-
-  requestAnimationFrame(() => {
-    if (previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
-      previousFocus.focus();
-      return;
-    }
-
-    const session = state.terminals.get(state.activeTerminalId);
-
-    if (state.activeView === 'terminal' && session && !session.closed) {
-      focusTerminal(session);
-    }
-  });
-}
-
-function toggleCommandPalette() {
-  if (state.commandPaletteOpen) {
-    closeCommandPalette();
-  } else {
-    openCommandPalette();
-  }
-}
-
-async function runCommandPaletteEntry(entry) {
-  if (!entry || typeof entry.run !== 'function') {
-    return;
-  }
-
-  rememberCommandPaletteEntry(entry.id);
-  closeCommandPalette({ restoreFocus: false });
-  appendActivityFeedEvent(`Command Palette: ${entry.title}.`, 'action', { dedupeMs: 500 });
-
-  await Promise.resolve(entry.run());
-}
-
-function runSelectedCommandPaletteEntry() {
-  const entry = state.commandPaletteResults[state.commandPaletteSelectedIndex];
-
-  if (!entry) {
-    return;
-  }
-
-  runCommandPaletteEntry(entry).catch((error) => {
-    showToast(`Command Palette action failed: ${error.message}`, 7000, 'error');
-  });
-}
-
-function handleCommandPaletteShortcut(event) {
-  const isPaletteShortcut = (event.ctrlKey || event.metaKey)
-    && event.shiftKey
-    && !event.altKey
-    && String(event.key || '').toLocaleLowerCase() === 'p';
-
-  if (!isPaletteShortcut) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  toggleCommandPalette();
-}
-
-function handleCommandPaletteInputKeydown(event) {
-  if (!state.commandPaletteOpen) {
-    return;
-  }
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    closeCommandPalette();
-    return;
-  }
-
-  if (!state.commandPaletteResults.length) {
-    return;
-  }
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(state.commandPaletteSelectedIndex + 1);
-    return;
-  }
-
-  if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(state.commandPaletteSelectedIndex - 1);
-    return;
-  }
-
-  if (event.key === 'Home') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(0);
-    return;
-  }
-
-  if (event.key === 'End') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(state.commandPaletteResults.length - 1);
-    return;
-  }
-
-  if (event.key === 'PageDown') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(state.commandPaletteSelectedIndex + 8);
-    return;
-  }
-
-  if (event.key === 'PageUp') {
-    event.preventDefault();
-    setCommandPaletteSelectedIndex(state.commandPaletteSelectedIndex - 8);
-    return;
-  }
-
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    runSelectedCommandPaletteEntry();
-  }
-}
-
-
-function bindEvents() {
-  document.addEventListener('keydown', handleCommandPaletteShortcut, true);
-  document.addEventListener('keydown', handleTerminalSearchShortcut, true);
-  document.addEventListener('keydown', handleTerminalToolbarShortcut, true);
-
-  $('#tool-command-palette')?.addEventListener('click', toggleCommandPalette);
-  $('#command-palette-close')?.addEventListener('click', () => closeCommandPalette());
-  $('#command-palette-input')?.addEventListener('input', () => {
-    state.commandPaletteSelectedIndex = 0;
-    renderCommandPaletteResults();
-  });
-  $('#command-palette-input')?.addEventListener('keydown', handleCommandPaletteInputKeydown);
-  $('#command-palette-modal')?.addEventListener('click', (event) => {
-    if (event.target.id === 'command-palette-modal') {
-      closeCommandPalette();
-    }
-  });
-  $('#command-palette-modal')?.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.commandPaletteOpen) {
+  menu.appendChild(colors);
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      closeCommandPalette();
+      closeTerminalTabContextMenu();
+      returnFocus?.focus();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      const enabled = Array.from(menu.querySelectorAll('button:not(:disabled)'));
+      const index = enabled.indexOf(document.activeElement);
+      if (!enabled.length) return;
+      event.preventDefault();
+      const next = event.key === 'ArrowDown' ? (index + 1) % enabled.length : (index - 1 + enabled.length) % enabled.length;
+      enabled[next].focus();
     }
   });
+  menu.style.maxHeight = 'calc(100vh - 16px)';
+  menu.style.overflowY = 'auto';
+  document.body.appendChild(menu);
+  terminalTabContextMenu = menu;
+  const bounds = menu.getBoundingClientRect();
+  const left = anchor?.left ?? 8;
+  const top = anchor?.bottom ?? 8;
+  menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(top + 4, window.innerHeight - bounds.height - 8))}px`;
+  requestAnimationFrame(() => menu.querySelector('button:not(:disabled)')?.focus());
+}
+
+function createV7SessionSectionHeader(sectionId, sectionName) {
+  const header = document.createElement('div');
+  header.className = 'v7-session-section-header';
+  header.dataset.v7SectionId = sectionId;
+  header.setAttribute('role', 'heading');
+  header.setAttribute('aria-level', '3');
+  header.textContent = sectionName;
+  return header;
+}
+
+// V7 sessions-first navigation. Only the sidebar UI is rebuilt; xterm and SSH
+// sessions are never recreated, and no session data is written to settings.
+function getV7SessionStatus(session) {
+  if (!session || session.closed) return 'Disconnected';
+  if (['connecting', 'reconnecting'].includes(String(session.status || '').toLowerCase())) return 'Connecting';
+  if (session.processBusy === true) return 'Running command';
+  return session.server?.type === 'local' ? 'Local terminal' : 'SSH session';
+}
+
+function createV7SessionRow(terminalId) {
+  const row = document.createElement('div');
+  row.className = 'v7-session-row';
+  row.dataset.terminalId = terminalId;
+  row.setAttribute('role', 'listitem');
+
+  const switchButton = document.createElement('button');
+  switchButton.type = 'button';
+  switchButton.className = 'v7-session-item';
+  const icon = document.createElement('span');
+  icon.className = 'v7-session-dot';
+  icon.setAttribute('aria-hidden', 'true');
+  const content = document.createElement('span');
+  content.className = 'v7-session-name';
+  const title = document.createElement('strong');
+  const details = document.createElement('small');
+  content.append(title, details);
+  const pin = document.createElement('span');
+  pin.className = 'v7-session-pin';
+  pin.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.6 3.4l6 6-2.1 2.1-1.7-1.7-4.6 4.6.5 3.4-1.5 1.5-3.9-3.9-4.4 4.4-1.4-1.4 4.4-4.4-3.9-3.9 1.5-1.5 3.4.5 4.6-4.6-1.7-1.7 2.1-2.1z"/></svg>';
+  pin.setAttribute('aria-label', 'Pinned session');
+  const indicator = document.createElement('span');
+  indicator.className = 'v7-session-indicator';
+  indicator.setAttribute('aria-hidden', 'true');
+  const expand = document.createElement('button');
+  expand.type = 'button';
+  expand.className = 'v7-session-expand';
+  expand.setAttribute('aria-label', 'Expand submenu');
+  expand.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleV7SessionChildren(terminalId);
+  });
+  switchButton.append(icon, content, pin, indicator);
+
+  // A separate button avoids nesting interactive controls and makes all existing
+  // tab actions accessible without relying on right-click.
+  const actionsButton = document.createElement('button');
+  actionsButton.type = 'button';
+  actionsButton.className = 'v7-session-actions';
+  actionsButton.textContent = '⋮';
+  actionsButton.setAttribute('aria-haspopup', 'menu');
+  const openActions = () => {
+    if (!state.terminals.has(terminalId)) return;
+    const rect = actionsButton.getBoundingClientRect();
+    showV7SessionActionsMenu(terminalId, rect, actionsButton);
+  };
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'v7-session-close';
+  closeButton.textContent = '×';
+  closeButton.setAttribute('aria-label', 'Close session');
+  closeButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeTerminalSession(terminalId, { force: true });
+  });
+
+  switchButton.addEventListener('click', () => {
+    if (!state.terminals.has(terminalId)) return;
+    // When the user selects the current session, simply refocus it; do not
+    // repeat the expensive tab activation, fitting and redraw path.
+    if (state.activeTerminalId === terminalId && state.activeView === 'terminal') {
+      focusTerminal(state.terminals.get(terminalId));
+    } else {
+      setActiveView('terminal', 'terminal');
+      activateTerminalAndFocus(terminalId);
+    }
+  });
+  switchButton.addEventListener('keydown', (event) => {
+    if (event.key === 'F10' && event.shiftKey) {
+      event.preventDefault();
+      openActions();
+    }
+  });
+  row.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (state.terminals.has(terminalId)) {
+      const rect = row.getBoundingClientRect();
+      showV7SessionActionsMenu(terminalId, { left: event.clientX || rect.left, bottom: event.clientY || rect.bottom }, switchButton);
+    }
+  });
+  actionsButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openActions();
+  });
+  row.draggable = true;
+  row.addEventListener('dragstart', (event) => {
+    if (event.target.closest('.v7-session-actions, .v7-session-close, .v7-session-expand')) {
+      event.preventDefault();
+      return;
+    }
+    v7DraggedSessionId = terminalId;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', terminalId);
+    row.classList.add('is-dragging');
+  });
+  row.addEventListener('dragend', clearV7SessionDrag);
+  row.addEventListener('dragover', (event) => {
+    if (!v7DraggedSessionId || v7DraggedSessionId === terminalId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    showV7SessionDropPreview(row, getV7SessionDropPlacement(event, row));
+  });
+  row.addEventListener('dragleave', (event) => {
+    if (!row.contains(event.relatedTarget)) showV7SessionDropPreview(row, '');
+  });
+  row.addEventListener('drop', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = v7DraggedSessionId;
+    const placement = getV7SessionDropPlacement(event, row);
+    clearV7SessionDrag();
+    if (sourceId) {
+      if (placement === 'inside') nestV7Session(sourceId, terminalId);
+      else moveV7SessionRelative(sourceId, terminalId, placement);
+    }
+  });
+  row.prepend(expand);
+  row.append(switchButton, actionsButton, closeButton);
+  return row;
+}
+
+let v7DraggedSessionId = null;
+function clearV7SessionDrag() {
+  v7DraggedSessionId = null;
+  $$('.v7-session-row.is-dragging, .v7-session-row.is-drop-target, .v7-session-row.is-drop-before, .v7-session-row.is-drop-after, .v7-session-section-header.is-drop-target')
+    .forEach((item) => item.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
+}
+
+function updateV7SessionRow(row, session) {
+  const children = getV7SessionChildren(session.terminalId);
+  const isChild = Boolean(getV7SessionParent(session));
+  row.classList.toggle('is-child', isChild);
+  const expand = row.querySelector('.v7-session-expand');
+  expand.hidden = isChild || children.length === 0;
+  expand.textContent = session.v7Collapsed ? '▸' : '▾';
+  expand.setAttribute('aria-expanded', String(!session.v7Collapsed));
+  expand.setAttribute('aria-label', `${session.v7Collapsed ? 'Expand' : 'Collapse'} ${getTerminalTabTitle(session)} submenu`);
+  const title = getTerminalTabTitle(session);
+  const active = session.terminalId === state.activeTerminalId;
+  const working = isTerminalTabWorking(session);
+  row.classList.toggle('active', active);
+  row.classList.toggle('is-working', working);
+  row.classList.toggle('is-pinned', session.tabPinned === true);
+  row.setAttribute('aria-busy', working ? 'true' : 'false');
+  const switchButton = row.querySelector('.v7-session-item');
+  switchButton.setAttribute('aria-current', active ? 'true' : 'false');
+  switchButton.setAttribute('aria-label', `Switch to ${title} — ${getV7SessionStatus(session)}`);
+  switchButton.title = `${title} — ${getV7SessionStatus(session)} · right-click or use More actions`;
+  // Render a clear local-terminal or SSH-server icon, only when its type
+  // changes. Regular status updates must not rebuild this DOM unnecessarily.
+  const sessionIcon = row.querySelector('.v7-session-dot');
+  const sessionType = session.server?.type === 'local' ? 'local' : 'ssh';
+  if (sessionIcon.dataset.sessionType !== sessionType) {
+    sessionIcon.dataset.sessionType = sessionType;
+    sessionIcon.innerHTML = sessionType === 'local'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>';
+  }
+  row.querySelector('.v7-session-name strong').textContent = title;
+  row.querySelector('.v7-session-name small').textContent = getV7SessionStatus(session);
+  row.querySelector('.v7-session-pin').hidden = session.tabPinned !== true;
+  const actionsButton = row.querySelector('.v7-session-actions');
+  actionsButton?.setAttribute('aria-label', `Actions for ${title}`);
+  const closeButton = row.querySelector('.v7-session-close');
+  if (closeButton) {
+    closeButton.disabled = false;
+    closeButton.title = `Close ${title}`;
+    closeButton.setAttribute('aria-label', `Close ${title}`);
+  }
+  const color = normalizeTerminalTabColor(session.tabColor);
+  const paletteChoice = getV7SessionPaletteChoice(color);
+  row.classList.toggle('has-custom-color', Boolean(color));
+  if (color) {
+    row.style.setProperty('--v7-session-color', color);
+    row.style.setProperty('--v7-session-color-idle', paletteChoice?.idle || `color-mix(in srgb, ${color} 18%, #202226)`);
+    row.style.setProperty('--v7-session-color-hover', paletteChoice?.hover || `color-mix(in srgb, ${color} 38%, #202226)`);
+    row.style.setProperty('--v7-session-color-active', paletteChoice?.active || color);
+  } else {
+    row.style.removeProperty('--v7-session-color');
+    row.style.removeProperty('--v7-session-color-idle');
+    row.style.removeProperty('--v7-session-color-hover');
+    row.style.removeProperty('--v7-session-color-active');
+  }
+}
+
+function renderV7MinimalSessionList() {
+  const list = $('#v7-session-list');
+  if (!list) return;
+  const all = Array.from(state.terminals.values())
+    .filter((session) => session.pendingReconnectReplacement !== true);
+  const count = $('#v7-session-count');
+  if (count) count.textContent = String(all.length);
+  const query = String($('#v7-session-search')?.value || '').trim().toLocaleLowerCase();
+  const matches = (session) => getTerminalTabTitle(session).toLocaleLowerCase().includes(query);
+  const existing = new Map(Array.from(list.children)
+    .filter((node) => node.classList?.contains('v7-session-row'))
+    .map((node) => [node.dataset.terminalId, node]));
+  const existingHeaders = new Map(Array.from(list.children)
+    .filter((node) => node.classList?.contains('v7-session-section-header'))
+    .map((node) => [node.dataset.v7SectionId, node]));
+  const desired = [];
+  const pushHeader = (key, label) => {
+    const node = existingHeaders.get(key) || createV7SessionSectionHeader(key, label);
+    node.textContent = label;
+    desired.push(node);
+  };
+  const pushRow = (session) => {
+    const node = existing.get(session.terminalId) || createV7SessionRow(session.terminalId);
+    updateV7SessionRow(node, session);
+    desired.push(node);
+  };
+  // The parent is the only section owner. Children always follow it as
+  // independent, indented full-width tabs, with no duplicate pinned shortcuts.
+  const roots = all.filter((session) => !getV7SessionParent(session));
+  const seen = new Set();
+  const appendTree = (root) => {
+    const children = getV7SessionChildren(root.terminalId);
+    const rootMatch = !query || matches(root);
+    const matchingChildren = children.filter((child) => !query || rootMatch || matches(child));
+    if (!rootMatch && !matchingChildren.length) return;
+    pushRow(root);
+    seen.add(root.terminalId);
+    if (query || !root.v7Collapsed) {
+      matchingChildren.forEach((child) => { pushRow(child); seen.add(child.terminalId); });
+    }
+  };
+  const pinned = getV7OrderedSessions(roots.filter((root) => root.tabPinned));
+  const regular = getV7OrderedSessions(roots.filter((root) => !root.tabPinned));
+  if (!query || pinned.some((root) => matches(root) || getV7SessionChildren(root.terminalId).some(matches))) {
+    pushHeader('v7-section-pinned', 'PINNED');
+  }
+  pinned.forEach(appendTree);
+  if (!query || regular.some((root) => matches(root) || getV7SessionChildren(root.terminalId).some(matches))) {
+    pushHeader('v7-section-sessions', 'SESSIONS LIST');
+  }
+  regular.forEach(appendTree);
+  // Defensive fallback: no session may disappear due to malformed parent metadata.
+  all.filter((session) => !seen.has(session.terminalId) && !getV7SessionParent(session) && (!query || matches(session)))
+    .forEach((session) => { if (!desired.some((node) => node.dataset?.terminalId === session.terminalId)) pushRow(session); });
+  const wanted = new Set(desired);
+  desired.forEach((node, index) => {
+    if (list.children[index] !== node) list.insertBefore(node, list.children[index] || null);
+  });
+  Array.from(list.children).forEach((node) => { if (!wanted.has(node)) node.remove(); });
+  if (!desired.some((node) => node.classList?.contains('v7-session-row'))) {
+    const empty = document.createElement('p');
+    empty.className = 'v7-sessions-empty';
+    empty.textContent = all.length ? 'No matching sessions' : 'No open sessions — use + to open one';
+    list.appendChild(empty);
+  }
+}
+
+function setV7MenuOpen(open) {
+  const panel = $('#v7-shell-menu');
+  const toggle = $('#v7-shell-menu-toggle');
+  if (!panel || !toggle) return;
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+}
+
+// V7 sidebar: show open sessions by default. Original Servers / Commands DOM
+// remains mounted and functional, reachable from the main application menu.
+function setV7SidebarView(view) {
+  const normalized = view === 'servers' || view === 'commands' ? view : 'sessions';
+  // Preserve old search/menu entry points while routing directories to the
+  // on-demand side panel instead of replacing the open Sessions list.
+  if (window.v7PushFlyout) {
+    if (normalized === 'servers' || normalized === 'commands') {
+      window.v7PushFlyout.openTool(normalized);
+      return;
+    }
+    window.v7PushFlyout.close();
+  }
+  const panel = $('#servers-panel');
+  if (!panel) return;
+
+  panel.classList.toggle('v7-sessions-only', normalized === 'sessions');
+  panel.classList.toggle('v7-directory-view', normalized !== 'sessions');
+
+  $$('.v7-sidebar-nav-action').forEach((button) => {
+    const selected = button.dataset.v7SidebarView === normalized;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+
+  // A menu selection is explicit user navigation. Do not write UI preferences
+  // or change SSH/terminal data, credentials or running sessions.
+  if (state.connectionsPanelCollapsed) setConnectionsPanelCollapsed(false, false);
+  if (state.activeView !== 'terminal') setActiveView('terminal', 'terminal');
+  if (normalized === 'servers') setLeftTab('connections');
+  if (normalized === 'commands') setLeftTab('commands');
+  if (normalized === 'sessions') renderV7MinimalSessionList();
+}
+
+function closeV7GlobalResults() {
+  const results = $('#v7-global-results');
+  const input = $('#v7-global-search');
+  if (results) { results.hidden = true; results.replaceChildren(); }
+  input?.setAttribute('aria-expanded', 'false');
+}
+
+function renderV7GlobalResults() {
+  const input = $('#v7-global-search');
+  const panel = $('#v7-global-results');
+  if (!input || !panel) return;
+  const query = String(input.value || '').trim().toLocaleLowerCase();
+  panel.replaceChildren();
+  if (!query) { closeV7GlobalResults(); return; }
+  const matches = [];
+  // Never include credentials, command bodies, host names or key paths in results.
+  for (const session of state.terminals.values()) {
+    const title = getTerminalTabTitle(session);
+    if (title.toLocaleLowerCase().includes(query)) {
+      matches.push({ type: 'Session', name: title, run: () => {
+        setActiveView('terminal', 'terminal');
+        activateTerminalAndFocus(session.terminalId);
+      }});
+    }
+  }
+  for (const server of state.settings?.servers || []) {
+    const name = String(server.name || 'Unnamed connection');
+    if (name.toLocaleLowerCase().includes(query)) {
+      matches.push({ type: 'Connection', name, run: () => {
+        setActiveView('terminal', 'terminal');
+        setV7SidebarView('servers');
+        setConnectionGroupFilter('all');
+        setConnectionFilter('all');
+        const search = $('#server-search');
+        if (search) search.value = name;
+        renderServerList();
+        $('#server-list .server-card')?.scrollIntoView({ block: 'nearest' });
+      }});
+    }
+  }
+  for (const command of state.settings?.commands || []) {
+    const name = String(command.name || 'Unnamed command');
+    if (name.toLocaleLowerCase().includes(query)) {
+      matches.push({ type: 'Command', name, run: () => {
+        setActiveView('terminal', 'terminal');
+        setV7SidebarView('commands');
+        const search = $('#command-search');
+        if (search) search.value = name;
+        renderCommandList();
+      }});
+    }
+  }
+  for (const page of [{name:'Settings',view:'settings'}, {name:'Reports',view:'report'}, {name:'Help',view:'about'}, {name:'Terminal',view:'terminal'}]) {
+    if (page.name.toLocaleLowerCase().includes(query)) matches.push({type:'Page',name:page.name,run:()=>setActiveView(page.view)});
+  }
+  matches.slice(0,9).forEach((match) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'v7-result-item';
+    const kind = document.createElement('small');
+    kind.textContent = match.type;
+    const label = document.createElement('span');
+    label.textContent = match.name;
+    button.append(kind, label);
+    button.addEventListener('click', () => {
+      closeV7GlobalResults();
+      input.value = '';
+      match.run();
+    });
+    panel.appendChild(button);
+  });
+  if (!panel.childElementCount) {
+    const empty = document.createElement('p');
+    empty.className = 'v7-no-results';
+    empty.textContent = 'No matching sessions, connections, or commands';
+    panel.appendChild(empty);
+  }
+  panel.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+}
+
+
+// V7 quick-launch menu: the existing saved-terminal picker and connection modal
+// own the actual operations. This menu only chooses which already-supported
+// workflow to open, with no auto-connect, settings write, or extra timers.
+let v7NewSessionMenu = null;
+let v7NewSessionTrigger = null;
+
+function createV7QuickLocalServer(shell) {
+  if (!['powershell', 'cmd'].includes(shell)) return null;
+  return {
+    id: randomId('quick-local'),
+    type: 'local',
+    name: shell === 'cmd' ? 'Command Prompt' : 'PowerShell',
+    shell: shell === 'cmd' ? 'cmd.exe' : 'powershell.exe',
+    workingDirectory: '',
+    quickLocalShell: shell
+  };
+}
+
+async function launchV7QuickLocalTerminal(shell = 'powershell') {
+  if (state.connectionAttemptInFlight || getConnectingTerminalSession()) {
+    showToast('Finish opening the current connection first.', 3500, 'warning');
+    return;
+  }
+  const server = createV7QuickLocalServer(shell);
+  if (!server) return;
+  closeV7NewSessionMenu();
+  setActiveView('terminal', 'terminal');
+  await connectSelectedServer({ serverOverride: server });
+}
+
+function closeV7NewSessionMenu({ restoreFocus = false } = {}) {
+  const menu = v7NewSessionMenu;
+  const trigger = v7NewSessionTrigger;
+  v7NewSessionMenu = null;
+  v7NewSessionTrigger = null;
+  menu?.remove();
+  trigger?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && trigger?.isConnected) trigger.focus();
+}
+
+function toggleV7NewSessionMenu(trigger, { quickLocal = false } = {}) {
+  if (v7NewSessionMenu) {
+    closeV7NewSessionMenu({ restoreFocus: true });
+    return;
+  }
+  closeTerminalTabPicker();
+  setV7MenuOpen(false);
+
+  const menu = document.createElement('div');
+  menu.className = 'v7-new-session-menu';
+  menu.id = 'v7-new-session-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', quickLocal ? 'Choose local terminal shell' : 'New session options');
+  const heading = document.createElement('div');
+  heading.className = 'v7-new-session-heading';
+  heading.textContent = quickLocal ? 'NEW TERMINAL' : 'NEW SESSION';
+  menu.appendChild(heading);
+
+  const choices = quickLocal ? [
+    { title: 'PowerShell', hint: 'Open a new local PowerShell terminal', action: () => launchV7QuickLocalTerminal('powershell') },
+    { title: 'Command Prompt (CMD)', hint: 'Open a new Windows CMD terminal', action: () => launchV7QuickLocalTerminal('cmd') }
+  ] : [
+    { title: 'Saved local terminals', hint: 'Open a saved PowerShell or local project', action: () => showTerminalTabPicker(trigger, { typeFilter: 'local' }) },
+    { title: 'Saved SSH connections', hint: 'Select a saved remote server', action: () => showTerminalTabPicker(trigger, { typeFilter: 'remote' }) },
+    { title: 'New local project', hint: 'Configure a local terminal start folder', action: () => openAddConnectionModal('local', true) },
+    { title: 'New SSH connection', hint: 'Configure a new saved SSH server', action: () => openAddConnectionModal('remote', true) }
+  ];
+  for (const choice of choices) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'v7-new-session-item';
+    item.setAttribute('role', 'menuitem');
+    const title = document.createElement('span');
+    title.textContent = choice.title;
+    const hint = document.createElement('small');
+    hint.textContent = choice.hint;
+    item.append(title, hint);
+    item.addEventListener('click', () => {
+      closeV7NewSessionMenu();
+      choice.action();
+    });
+    menu.appendChild(item);
+  }
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeV7NewSessionMenu({ restoreFocus: true });
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(menu.querySelectorAll('.v7-new-session-item'));
+    const index = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : event.key === 'ArrowDown' ? (index + 1 + items.length) % items.length
+      : (index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length);
+    items[next]?.focus();
+  });
+  v7NewSessionTrigger = trigger;
+  v7NewSessionMenu = menu;
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'true');
+  document.body.appendChild(menu);
+  positionTerminalTabPicker(trigger, menu);
+  menu.querySelector('.v7-new-session-item')?.focus();
+}
+
+function bindV7MinimalShell() {
+  const menu = $('#v7-shell-menu');
+  $('#v7-shell-menu-toggle')?.addEventListener('click', () => setV7MenuOpen(Boolean(menu?.hidden)));
+  menu?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-v7-sidebar-view]');
+    if (!button) return;
+    setV7SidebarView(button.dataset.v7SidebarView);
+    setV7MenuOpen(false);
+  });
+  // These controls already have existing click handlers. Closing the menu does
+  // not replay or replace any action; that prevents duplicate execution.
+  menu?.addEventListener('click', (event) => {
+    if (event.target.closest('.menu-item, .tool-button')) setV7MenuOpen(false);
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (v7NewSessionMenu && !v7NewSessionMenu.contains(event.target) && !v7NewSessionTrigger?.contains(event.target)) closeV7NewSessionMenu();
+    if (menu && !menu.hidden && !event.target.closest('.v7-shell-menu-wrap')) setV7MenuOpen(false);
+    if (!event.target.closest('.v7-quick-search')) closeV7GlobalResults();
+  });
+  const input = $('#v7-global-search');
+  input?.addEventListener('input', renderV7GlobalResults);
+  input?.addEventListener('focus', () => { if (input.value.trim()) renderV7GlobalResults(); });
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeV7GlobalResults();
+      input.blur();
+    } else if (event.key === 'Enter') {
+      const first = $('#v7-global-results .v7-result-item');
+      if (first) { event.preventDefault(); first.click(); }
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeV7NewSessionMenu();
+    if (event.key === 'Escape' && menu && !menu.hidden) setV7MenuOpen(false);
+    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      setV7MenuOpen(false);
+      input?.focus();
+      input?.select();
+    }
+  });
+  $('#v7-new-session')?.addEventListener('click', (event) => toggleV7NewSessionMenu(event.currentTarget));
+  $('#v7-sidebar-new-session')?.addEventListener('click', (event) =>
+    toggleV7NewSessionMenu(event.currentTarget, { quickLocal: true }));
+  const sessionList = $('#v7-session-list');
+  sessionList?.addEventListener('dragover', (event) => {
+    const header = event.target.closest('.v7-session-section-header');
+    if (!header || !v7DraggedSessionId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    header.classList.add('is-drop-target');
+  });
+  sessionList?.addEventListener('dragleave', (event) => {
+    const header = event.target.closest('.v7-session-section-header');
+    if (header && !header.contains(event.relatedTarget)) header.classList.remove('is-drop-target');
+  });
+  sessionList?.addEventListener('drop', (event) => {
+    const header = event.target.closest('.v7-session-section-header');
+    if (!header || !v7DraggedSessionId) return;
+    event.preventDefault();
+    const id = v7DraggedSessionId;
+    const pinned = header.dataset.v7SectionId === 'v7-section-pinned';
+    clearV7SessionDrag();
+    moveV7SessionToSection(id, pinned);
+  });
+  const sessionSearch = $('#v7-session-search');
+  sessionSearch?.addEventListener('input', renderV7MinimalSessionList);
+  sessionSearch?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sessionSearch.value) {
+      event.preventDefault();
+      sessionSearch.value = '';
+      renderV7MinimalSessionList();
+    }
+  });
+  $('#v7-session-list')?.addEventListener('keydown', (event) => {
+    if (!event.target.matches('.v7-session-item')) return;
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const switches = Array.from($('#v7-session-list').querySelectorAll('.v7-session-item'));
+    const index = switches.indexOf(event.target);
+    if (index < 0) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? switches.length - 1
+      : Math.max(0, Math.min(switches.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+    switches[next]?.focus();
+  });
+  $('#v7-open-settings')?.addEventListener('click', () => setActiveView('settings', 'settings'));
+  renderV7MinimalSessionList();
+}
+
+// V7 command composer: reuse the existing guarded, audited terminal-write route.
+// Drafts live in memory only; no terminal commands or credentials are stored.
+const v7ComposerDrafts = new Map();
+let v7ComposerDisplayedTerminalId = null;
+const v7ComposerSending = new Set();
+const V7_COMPOSER_AUTO_SEND_KEY = 'advance-terminal-v7-composer-auto-send';
+let v7ComposerPasteSequence = 0;
+
+function syncV7CommandComposer() {
+  const input = $('#v7-composer-input');
+  const send = $('#v7-composer-send');
+  if (!input || !send) return;
+
+  const id = state.activeTerminalId || null;
+  if (v7ComposerDisplayedTerminalId !== id) {
+    v7ComposerDisplayedTerminalId = id;
+    input.value = id ? (v7ComposerDrafts.get(id) || '') : '';
+  }
+  const session = id && state.terminals.get(id);
+  const unavailable = !session || session.closed || v7ComposerSending.has(id);
+  send.disabled = unavailable || !input.value.trim();
+  send.title = !session || session.closed ? 'Connect or reconnect a terminal to send'
+    : v7ComposerSending.has(id) ? 'Sending command...' : 'Send command (Enter)';
+}
+
+async function sendV7ComposerCommand({ automaticPaste = false } = {}) {
+  const input = $('#v7-composer-input');
+  const value = String(input?.value || '');
+  if (!input || !value.trim()) return false;
+  const terminalId = state.activeTerminalId;
+  const session = state.terminals.get(terminalId);
+  if (!session || session.closed) {
+    showToast('Connect or reconnect a terminal before sending.', 3500, 'warning');
+    syncV7CommandComposer();
+    return false;
+  }
+  if (v7ComposerSending.has(terminalId)) return false;
+  v7ComposerSending.add(terminalId);
+  syncV7CommandComposer();
+  try {
+    const sent = await writeClipboardTextToTerminal(session, value, 'Command input', {
+      autoEnter: true,
+      preserveFocus: true,
+      normalizeLineEndings: true,
+      requireMultilineConfirm: automaticPaste,
+      requireActiveSession: true,
+      quiet: true
+    });
+    if (sent) {
+      v7ComposerDrafts.delete(terminalId);
+      if (state.activeTerminalId === terminalId && input.value === value) {
+        input.value = '';
+      }
+      if (state.activeTerminalId === terminalId) input.focus();
+    }
+    return sent;
+  } catch (error) {
+    showToast(`Command not sent: ${error.message}`, 5000, 'error');
+    return false;
+  } finally {
+    v7ComposerSending.delete(terminalId);
+    if (state.activeTerminalId === terminalId) {
+      v7ComposerDrafts.set(terminalId, input.value);
+    }
+    syncV7CommandComposer();
+  }
+}
+
+function bindV7CommandComposer() {
+  const input = $('#v7-composer-input');
+  const auto = $('#v7-composer-auto-send');
+  const project = $('#v7-composer-project');
+  if (!input || !auto || !project) return;
+
+  try { auto.checked = localStorage.getItem(V7_COMPOSER_AUTO_SEND_KEY) === 'true'; }
+  catch (_) { auto.checked = false; }
+  auto.addEventListener('change', () => {
+    try { localStorage.setItem(V7_COMPOSER_AUTO_SEND_KEY, String(auto.checked)); }
+    catch (_) { /* Optional UI preference; the command path remains available. */ }
+  });
+
+  input.addEventListener('input', () => {
+    // An edit after an auto-paste cancels its queued auto-send.
+    v7ComposerPasteSequence += 1;
+    const id = state.activeTerminalId;
+    if (id) v7ComposerDrafts.set(id, input.value);
+    syncV7CommandComposer();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    // Enter submits. Shift+Enter and IME composition never submit commands.
+    event.preventDefault();
+    void sendV7ComposerCommand();
+  });
+  input.addEventListener('paste', (event) => {
+    if (!auto.checked || !event.clipboardData) return;
+    const pasted = event.clipboardData.getData('text/plain');
+    if (!pasted) return;
+    // Only auto-send after the user deliberately enables the switch and pastes.
+    event.preventDefault();
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    input.value = input.value.slice(0, start) + pasted + input.value.slice(end);
+    const terminalId = state.activeTerminalId;
+    if (terminalId) v7ComposerDrafts.set(terminalId, input.value);
+    input.setSelectionRange(start + pasted.length, start + pasted.length);
+    syncV7CommandComposer();
+
+    // Give the browser a real paint opportunity before sending and clearing
+    // the composer. If the user edits, switches tab, or disables auto-send,
+    // keep the draft rather than running a stale paste.
+    const pasteSequence = ++v7ComposerPasteSequence;
+    const pastedDraft = input.value;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (pasteSequence !== v7ComposerPasteSequence || !auto.checked
+            || state.activeTerminalId !== terminalId || input.value !== pastedDraft) return;
+        void sendV7ComposerCommand({ automaticPaste: true });
+      });
+    });
+  });
+  $('#v7-composer-send')?.addEventListener('click', () => { void sendV7ComposerCommand(); });
+  project.addEventListener('click', () => toggleV7NewSessionMenu(project));
+  syncV7CommandComposer();
+}
+
+function bindEvents() {
+  bindV7MinimalShell();
+  bindV7CommandComposer();
+  document.addEventListener('keydown', handleTerminalSearchShortcut, true);
 
   $('.about-logo-image')?.addEventListener('error', (event) => {
     event.currentTarget.classList.add('hidden');
@@ -16704,6 +12274,14 @@ function bindEvents() {
 
   $('#terminal-search-close')?.addEventListener('click', () => {
     closeTerminalSearch();
+  });
+
+  $('#terminal-nav-back')?.addEventListener('click', () => navigateTerminalTab('back'));
+  $('#terminal-nav-forward')?.addEventListener('click', () => navigateTerminalTab('forward'));
+  $('#terminal-nav-reload')?.addEventListener('click', () => {
+    reloadActiveTerminalDisplay().catch((error) => {
+      showToast(`Terminal refresh failed: ${error.message}`, 5000, 'error');
+    });
   });
 
   $$('.window-button').forEach((button) => {
@@ -16766,8 +12344,29 @@ function bindEvents() {
     button.addEventListener('click', () => setConnectionFilter(button.dataset.connectionFilter));
   });
 
+  $('#connection-group-filter-toggle')?.addEventListener('click', () => {
+    const popover = $('#connection-group-filter-popover');
+    setConnectionGroupFilterPopoverOpen(Boolean(popover?.hidden));
+  });
+
   $('#connection-group-filter')?.addEventListener('change', (event) => {
     setConnectionGroupFilter(event.target.value);
+    setConnectionGroupFilterPopoverOpen(false, true);
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    const popover = $('#connection-group-filter-popover');
+    if (popover && !popover.hidden && !event.target.closest('.connection-search-row')) {
+      setConnectionGroupFilterPopoverOpen(false);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('#connection-group-filter-popover')?.hidden) {
+      setConnectionGroupFilterPopoverOpen(false, true);
+      event.preventDefault();
+      event.stopPropagation();
+    }
   });
 
   $('#command-category-filter')?.addEventListener('change', (event) => {
@@ -16836,20 +12435,7 @@ function bindEvents() {
       closeAddConnectionModal();
     }
   });
-  $('#tool-quick-menu')?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    toggleQuickActionsMenu();
-  });
-  $('#quick-actions-menu')?.addEventListener('click', (event) => {
-    const item = event.target.closest('[data-quick-action]');
-
-    if (!item) {
-      return;
-    }
-
-    event.stopPropagation();
-    runQuickActionsMenuItem(item.dataset.quickAction);
-  });
+  $('#tool-new-server').addEventListener('click', () => openAddConnectionModal('remote', true));
   $('#connections-panel-toggle')?.addEventListener('click', toggleConnectionsPanelCollapsed);
 
   $('#tool-save-settings').addEventListener('click', exportSettingsBackup);
@@ -16870,13 +12456,11 @@ function bindEvents() {
   $('#tool-file-settings')?.addEventListener('click', () => setActiveView('settings', 'settings'));
   $('#tool-file-about')?.addEventListener('click', () => setActiveView('about', 'help'));
 
-  $('#tool-view-live-console')?.addEventListener('click', toggleLiveConsole);
   $('#tool-view-notification')?.addEventListener('click', () => {
     setActiveView('view', 'view');
     previewNotification();
   });
 
-  $('#view-open-activity-feed')?.addEventListener('click', toggleLiveConsole);
   $('#view-preview-notification')?.addEventListener('click', () => {
     setActiveView('view', 'view');
     previewNotification();
@@ -16889,16 +12473,6 @@ function bindEvents() {
   });
 
   $('#restore-refresh-button')?.addEventListener('click', renderSettingsRestorePoints);
-
-  $('#tool-settings-workspaces')?.addEventListener('click', () => {
-    setActiveView('settings', 'settings');
-    setSettingsTab('workspaces');
-  });
-
-  $('#tool-settings-terminal-profiles')?.addEventListener('click', () => {
-    setActiveView('settings', 'settings');
-    setSettingsTab('terminal-profiles');
-  });
 
   $('#tool-settings-terminal-actions')?.addEventListener('click', () => {
     setActiveView('settings', 'settings');
@@ -16925,35 +12499,6 @@ function bindEvents() {
     setHelpTab('about');
   });
 
-  $('#workspace-capture-header')?.addEventListener('click', () => {
-    saveCurrentWorkspaceQuick().catch((error) => {
-      showToast(`Workspace save failed: ${error.message}`, 7000, 'error');
-    });
-  });
-
-  $('#workspace-new')?.addEventListener('click', newWorkspaceFromManager);
-  $('#workspace-duplicate')?.addEventListener('click', () => {
-    duplicateWorkspaceFromManager().catch((error) => showToast(`Workspace duplicate failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#workspace-delete')?.addEventListener('click', () => {
-    deleteWorkspaceFromManager().catch((error) => showToast(`Workspace delete failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#workspace-save-details')?.addEventListener('click', () => {
-    saveWorkspaceDetailsFromManager().catch((error) => showToast(`Workspace save failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#workspace-capture')?.addEventListener('click', () => {
-    captureWorkspaceFromManager().catch((error) => showToast(`Workspace capture failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#workspace-open')?.addEventListener('click', () => {
-    if (!state.editingWorkspaceId) {
-      return;
-    }
-
-    restoreWorkspace(state.editingWorkspaceId).catch((error) => {
-      showToast(`Workspace restore failed: ${error.message}`, 7000, 'error');
-    });
-  });
-
   $$('.help-tab').forEach((button) => {
     button.addEventListener('click', () => {
       setActiveView('about', 'help');
@@ -16973,17 +12518,6 @@ function bindEvents() {
   });
 
   $('#tool-help-settings')?.addEventListener('click', () => setActiveView('settings', 'settings'));
-  $('#live-console-tab')?.addEventListener('click', toggleLiveConsole);
-  $('#live-console-dismiss')?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    dismissLiveConsole();
-  });
-  $('#live-process-box')?.addEventListener('click', toggleLiveConsole);
-  setupLiveConsoleResize();
-  $('#live-console-clear')?.addEventListener('click', clearLiveConsole);
-  $('#live-console-copy')?.addEventListener('click', () => {
-    copyLiveConsole().catch((error) => showToast(`Copy failed: ${error.message}`, 5000));
-  });
   $('#session-report-close').addEventListener('click', closeSessionReportModal);
   $('#session-report-copy').addEventListener('click', () => {
     copySessionReport().catch((error) => showToast(`Copy failed: ${error.message}`, 5000));
@@ -17095,7 +12629,7 @@ function bindEvents() {
   $('#tool-send-ctrl-c')?.addEventListener('click', () => sendControlToActiveTerminal('\x03', 'Ctrl+C'));
   $('#tool-send-ctrl-l')?.addEventListener('click', () => sendControlToActiveTerminal('\x0c', 'Ctrl+L'));
   $('#tool-send-ctrl-d')?.addEventListener('click', () => sendControlToActiveTerminal('\x04', 'Ctrl+D'));
-  $('#tool-close-terminal')?.addEventListener('click', () => closeTerminalSession());
+  $('#tool-close-terminal')?.addEventListener('click', () => closeTerminalSession(null, { force: true }));
   $('#tool-toggle-theme').addEventListener('click', toggleTheme);
 
   // Legacy full server form is no longer shown in Settings.
@@ -17113,89 +12647,14 @@ function bindEvents() {
   });
 
 
-  $('#terminal-profile-new')?.addEventListener('click', newTerminalProfileFromManager);
-  $('#terminal-profile-duplicate')?.addEventListener('click', () => {
-    duplicateTerminalProfileFromManager().catch((error) => showToast(`Profile duplicate failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#terminal-profile-delete')?.addEventListener('click', () => {
-    deleteTerminalProfileFromManager().catch((error) => showToast(`Profile delete failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#terminal-profile-save')?.addEventListener('click', () => {
-    saveTerminalProfileFromManager().catch((error) => showToast(`Profile save failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#terminal-profile-save-bottom')?.addEventListener('click', () => {
-    saveTerminalProfileFromManager().catch((error) => showToast(`Profile save failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#terminal-profile-launch')?.addEventListener('click', () => {
-    const profileId = state.editingTerminalProfileId;
-    if (profileId) {
-      launchTerminalProfile(profileId).catch((error) => showToast(`Profile launch failed: ${error.message}`, 7000, 'error'));
-    }
-  });
-  $('#terminal-profile-detect')?.addEventListener('click', () => {
-    detectTerminalShellsForProfiles().catch((error) => showToast(`Shell detection failed: ${error.message}`, 7000, 'error'));
-  });
-  $('#terminal-profile-browse-executable')?.addEventListener('click', async () => {
-    const selected = await window.advanceTerminal?.selectTerminalExecutable?.();
-    if (selected && $('#terminal-profile-executable')) {
-      $('#terminal-profile-executable').value = selected;
-    }
-  });
-  $('#terminal-profile-browse-folder')?.addEventListener('click', async () => {
-    const selected = await window.advanceTerminal?.selectTerminalFolder?.();
-    if (selected && $('#terminal-profile-working-directory')) {
-      $('#terminal-profile-working-directory').value = selected;
-    }
-  });
-  $('#terminal-profile-kind')?.addEventListener('change', (event) => {
-    const kind = String(event.target.value || 'custom');
-    const executable = $('#terminal-profile-executable');
-    const icon = $('#terminal-profile-icon');
-    const currentExecutable = String(executable?.value || '').trim();
-    const knownDefaults = new Set(['powershell.exe', 'cmd.exe', 'wsl.exe', 'C:\\Program Files\\Git\\bin\\bash.exe', '']);
-
-    if (executable && knownDefaults.has(currentExecutable)) {
-      executable.value = terminalProfileDefaultExecutable(kind);
-    }
-
-    if (icon && (!String(icon.value || '').trim() || ['PS', 'CMD', 'GIT', 'WSL', 'TERM'].includes(String(icon.value || '').trim().toUpperCase()))) {
-      icon.value = terminalProfileDefaultIcon(kind);
-    }
-
-    if (kind === 'git-bash' && !String($('#terminal-profile-args')?.value || '').trim()) {
-      $('#terminal-profile-args').value = '--login\n-i';
-    }
-  });
-  $('#terminal-profile-color')?.addEventListener('input', (event) => {
-    if ($('#terminal-profile-color-text')) {
-      $('#terminal-profile-color-text').value = String(event.target.value || '#58a6ff').toLowerCase();
-    }
-  });
-  $('#terminal-profile-color-text')?.addEventListener('input', (event) => {
-    const value = String(event.target.value || '').trim();
-    if (/^#[0-9a-f]{6}$/i.test(value) && $('#terminal-profile-color')) {
-      $('#terminal-profile-color').value = value;
-    }
-  });
-
   $('#terminal-action-new')?.addEventListener('click', newTerminalActionFromManager);
-  $('#terminal-action-new-separator')?.addEventListener('click', newTerminalSeparatorFromManager);
   $('#terminal-action-duplicate')?.addEventListener('click', duplicateTerminalActionFromManager);
   $('#terminal-action-delete')?.addEventListener('click', deleteTerminalActionFromManager);
   $('#terminal-action-move-up')?.addEventListener('click', () => moveTerminalActionFromManager(-1));
   $('#terminal-action-move-down')?.addEventListener('click', () => moveTerminalActionFromManager(1));
   $('#terminal-action-reset')?.addEventListener('click', resetTerminalActionsToDefault);
-  $('#terminal-action-save')?.addEventListener('click', () => saveTerminalActionFromManager());
-  $('#terminal-toolbar-save')?.addEventListener('click', saveTerminalToolbarFromManager);
-  $('#terminal-action-item-type')?.addEventListener('change', () => {
-    updateTerminalActionFormVisibility();
-    updateTerminalActionCustomizationControls();
-  });
+  $('#terminal-action-save')?.addEventListener('click', saveTerminalActionFromManager);
   $('#terminal-action-kind')?.addEventListener('change', updateTerminalActionFormVisibility);
-  $('#terminal-action-visibility')?.addEventListener('change', updateTerminalActionFormVisibility);
-  $('#terminal-action-shortcut')?.addEventListener('input', updateTerminalActionShortcutHelp);
-  $('#terminal-action-color-enabled')?.addEventListener('change', updateTerminalActionCustomizationControls);
-  $('#terminal-action-color')?.addEventListener('input', updateTerminalActionCustomizationControls);
 
   $$('.settings-tab').forEach((button) => {
     button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab));
@@ -17224,21 +12683,6 @@ function bindEvents() {
     setRightClickAutoEnter(event.target.checked).catch((error) => {
       showToast(`Right-click paste setting save failed: ${error.message}`, 5000, 'error');
       updatePasteProtectionControls();
-    });
-  });
-
-  $('#terminal-busy-action-lock-toggle')?.addEventListener('change', (event) => {
-    setTerminalBusyActionLock(event.target.checked).catch((error) => {
-      showToast(`Running-command lock setting save failed: ${error.message}`, 5000, 'error');
-      updatePasteProtectionControls();
-      updateTerminalInteractionState();
-    });
-  });
-
-  $('#restart-as-admin-button')?.addEventListener('click', () => {
-    restartAdvanceTerminalAsAdministrator().catch((error) => {
-      updateWindowsAdminControls();
-      showToast(`Administrator restart failed: ${error.message}`, 7000, 'error');
     });
   });
 
@@ -17301,6 +12745,9 @@ function bindEvents() {
   });
 
   $('#notification-preview-button')?.addEventListener('click', previewNotification);
+  $('#in-app-toast-mode-select')?.addEventListener('change', (event) => {
+    setInAppToastMode(event.target.value);
+  });
 
   $('#generate-key-button').addEventListener('click', generateKey);
   $('#refresh-ssh-keys')?.addEventListener('click', () => refreshSshKeys());
@@ -17376,26 +12823,6 @@ function bindEvents() {
     }
   });
 
-
-  $('#terminal-tab-rename-cancel')?.addEventListener('click', () => closeTerminalTabRenameModal(false));
-  $('#terminal-tab-rename-save')?.addEventListener('click', () => closeTerminalTabRenameModal(true));
-  $('#terminal-tab-rename-modal')?.addEventListener('click', (event) => {
-    if (event.target.id === 'terminal-tab-rename-modal') {
-      closeTerminalTabRenameModal(false);
-    }
-  });
-  $('#terminal-tab-rename-modal')?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      closeTerminalTabRenameModal(true);
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeTerminalTabRenameModal(false);
-    }
-  });
-
   $('#safe-paste-cancel')?.addEventListener('click', () => closeSafePasteDialog(null));
   $('#safe-paste-single-line')?.addEventListener('click', () => closeSafePasteDialog('single-line'));
   $('#safe-paste-execute')?.addEventListener('click', () => closeSafePasteDialog('execute'));
@@ -17437,82 +12864,41 @@ function bindEvents() {
     }
   });
 
-  document.addEventListener('click', (event) => {
-    hideSidebarContextMenu();
-
-    if (!event.target.closest('#quick-actions-menu, #tool-quick-menu')) {
-      closeQuickActionsMenu();
-    }
-
-    if (!event.target.closest('#terminal-profile-quick-menu, #tool-quick-menu')) {
-      closeTerminalProfileQuickMenu();
-    }
-
-    if (!event.target.closest('#workspace-quick-menu, #tool-quick-menu')) {
-      closeWorkspaceQuickMenu();
-    }
-
-    if (!event.target.closest('.terminal-toolbar-dropdown-menu, .terminal-toolbar-dropdown-toggle')) {
-      closeTerminalToolbarDropdown();
+  document.addEventListener('click', hideSidebarContextMenu);
+  document.addEventListener('pointerdown', (event) => {
+    if (terminalTabContextMenu && !terminalTabContextMenu.contains(event.target)) {
+      closeTerminalTabContextMenu();
     }
   });
   document.addEventListener('pointerdown', (event) => {
-    if (
-      terminalTabPickerMenu
-      && !terminalTabPickerMenu.contains(event.target)
-      && !terminalTabPickerButton?.contains(event.target)
-    ) {
-      closeTerminalTabPicker();
+    if (!terminalTabPickerMenu) {
+      return;
     }
 
-    if (
-      terminalSplitPickerMenu
-      && !terminalSplitPickerMenu.contains(event.target)
-      && !terminalSplitPickerButton?.contains(event.target)
-    ) {
-      closeTerminalSplitPicker();
+    if (terminalTabPickerMenu.contains(event.target) || terminalTabPickerButton?.contains(event.target)) {
+      return;
     }
 
-    if (
-      terminalTabContextMenu
-      && !terminalTabContextMenu.contains(event.target)
-      && !event.target.closest('.terminal-tab')
-    ) {
-      closeTerminalTabContextMenu();
-    }
+    closeTerminalTabPicker();
   });
   document.addEventListener('contextmenu', (event) => {
     if (!event.target.closest('.server-card, .command-card, #sidebar-context-menu')) {
       hideSidebarContextMenu();
     }
-
-    if (!event.target.closest('.terminal-tab, .terminal-tab-context-menu')) {
-      closeTerminalTabContextMenu();
-    }
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       hideSidebarContextMenu();
-      closeQuickActionsMenu();
-      closeTerminalProfileQuickMenu();
-      closeWorkspaceQuickMenu();
       closeTerminalTabPicker({ restoreFocus: true });
-      closeTerminalSplitPicker({ restoreFocus: true });
-      closeTerminalTabContextMenu();
-      closeTerminalToolbarDropdown();
     }
   });
 
   window.addEventListener('resize', () => {
     hideSidebarContextMenu();
-    closeQuickActionsMenu();
-    closeTerminalProfileQuickMenu();
-    closeWorkspaceQuickMenu();
+    closeV7NewSessionMenu();
     closeTerminalTabPicker();
-    closeTerminalSplitPicker();
     closeTerminalTabContextMenu();
-    closeTerminalToolbarDropdown();
-    scheduleActiveTerminalFit();
+    fitActiveTerminal();
   });
 
   window.advanceTerminal.onTerminalData((payload) => {
@@ -17531,6 +12917,14 @@ function bindEvents() {
       queueTerminalOutputActivity(payload);
       maybeQueueLiveConsoleTerminalOutput(payload, session);
     }
+  });
+
+  // A Windows notification click targets the original tab without changing
+  // its order, pin, group or background session state.
+  window.advanceTerminal.onTerminalNotificationOpen?.((payload) => {
+    const terminalId = payload?.terminalId;
+    if (typeof terminalId !== 'string' || !state.terminals.has(terminalId)) return;
+    activateTerminalAndFocus(terminalId);
   });
 
   window.advanceTerminal.onTerminalPasswordRequired((payload) => {
@@ -17583,7 +12977,8 @@ function bindEvents() {
       if (scheduleAutoReconnect(session, payload)) {
         renderServerList();
         updateTerminalInteractionState();
-        showToast(`${session.server?.name || 'Terminal'} disconnected. Auto reconnect is scheduled.`, 6000, 'warning');
+        // Auto reconnect is routine state, already shown in the session/tab UI.
+        // Do not interrupt the user with a repeated floating warning.
         return;
       }
 
@@ -17600,23 +12995,23 @@ function bindEvents() {
       renderServerList();
       updateTerminalInteractionState();
 
-      showToast(
-        errorMessage
-          ? `${session.server?.name || 'SSH connection'}: ${errorMessage}`
-          : `${session.server?.name || 'Terminal'} disconnected${Number(payload.code) ? ` with code ${payload.code}` : ''}.`,
-        errorMessage ? 9000 : 6000,
-        Number(payload.code) ? 'error' : 'warning'
-      );
+      if (errorMessage || Number(payload.code)) {
+        showToast(
+          errorMessage
+            ? `${session.server?.name || 'SSH connection'}: ${errorMessage}`
+            : `${session.server?.name || 'Terminal'} disconnected with code ${payload.code}.`,
+          errorMessage ? 9000 : 6000,
+          'error'
+        );
+      }
     }
   });
 }
 
 async function init() {
   bindEvents();
-  setupTerminalResizeObserver();
 
   state.appInfo = await window.advanceTerminal.getAppInfo();
-  updateWindowsAdminControls();
 
   if (window.advanceTerminal.onUpdateStatus) {
     window.advanceTerminal.onUpdateStatus(handleUpdateStatus);
@@ -17635,22 +13030,16 @@ async function init() {
 
   applyTheme(getUiTheme());
   applyNotificationPosition(getNotificationPosition());
+  updateInAppToastModeControl();
   updatePasteProtectionControls();
   updateActivityFeedOutputControls();
   await refreshAiStatus({ silent: true });
   setConnectionsPanelCollapsed(readConnectionsPanelCollapsedPreference(), false);
-  setLiveConsoleDock('right');
-  setLiveConsoleSize('closed');
-  renderLiveProcessBox();
   renderTerminalToolbarActions();
-  renderTerminalProfileQuickMenu();
-  renderWorkspaceQuickMenu();
-  populateLocalProfileDropdown();
   updateConnectionFilterButtons();
 
-  $('#mode-label').textContent = state.appInfo?.displayVersion || 'Advance Terminal V6';
+  $('#mode-label').textContent = state.appInfo?.displayVersion || 'Advance Terminal V7';
 
-  appendLiveConsole('Advance Terminal started.', 'system');
   startRuntimeFooter();
   startDailyUsageTracking();
 
@@ -17666,14 +13055,10 @@ async function init() {
   setLeftTab(state.activeLeftTab);
   setTerminalStatus('idle');
   setActiveView('terminal');
+  restoreSavedTerminalSessions();
+  renderV7MinimalSessionList();
+  setupV7TerminalHostResizeObserver();
   state.activityFeedReady = true;
-
-  window.setTimeout(() => {
-    maybeRestoreStartupWorkspace().catch((error) => {
-      appendActivityFeedEvent(`Startup workspace failed: ${error.message}`, 'error', { dedupeMs: 1500 });
-      showToast(`Startup workspace failed: ${error.message}`, 8000, 'error');
-    });
-  }, 180);
 }
 
 init().catch((error) => {

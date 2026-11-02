@@ -2,7 +2,22 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen, Notification } = require('electron');
+const { createProcessCompletionNotifier } = require('./process-notifications');
+// Use the isolated V5 performance profile only when running from source.
+// A packaged V7 build uses the existing standalone profile, which contains
+// saved settings, encrypted secrets, application-managed SSH keys, and Chromium
+// storage. Resolve the paths before importing store/secret-store modules.
+const { resolveAdvanceTerminalProfile } = require('./profile-paths');
+const V5_COMPARISON_MODE = !app.isPackaged;
+const activeProfilePath = resolveAdvanceTerminalProfile({
+  appDataPath: app.getPath('appData'),
+  packaged: app.isPackaged
+});
+fs.mkdirSync(activeProfilePath, { recursive: true });
+app.setPath('userData', activeProfilePath);
+app.setPath('sessionData', activeProfilePath);
+
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { Client } = require('ssh2');
@@ -60,245 +75,6 @@ function getAppIconPath() {
   }
 
   return path.join(__dirname, '../../build/icon.ico');
-}
-
-function quotePowerShellLiteral(value) {
-  return `'${String(value || '').replace(/'/g, "''")}'`;
-}
-
-function quoteWindowsCommandLineArgument(value) {
-  const text = String(value ?? '');
-
-  if (!text) {
-    return '""';
-  }
-
-  if (!/[\s"]/u.test(text)) {
-    return text;
-  }
-
-  let quoted = '"';
-  let backslashes = 0;
-
-  for (const character of text) {
-    if (character === '\\') {
-      backslashes += 1;
-      continue;
-    }
-
-    if (character === '"') {
-      quoted += '\\'.repeat((backslashes * 2) + 1);
-      quoted += '"';
-      backslashes = 0;
-      continue;
-    }
-
-    quoted += '\\'.repeat(backslashes);
-    quoted += character;
-    backslashes = 0;
-  }
-
-  quoted += '\\'.repeat(backslashes * 2);
-  quoted += '"';
-  return quoted;
-}
-
-async function isWindowsProcessElevated() {
-  if (process.platform !== 'win32') {
-    return false;
-  }
-
-  const script = [
-    '$identity = [Security.Principal.WindowsIdentity]::GetCurrent()',
-    '$principal = New-Object Security.Principal.WindowsPrincipal($identity)',
-    '$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)'
-  ].join('; ');
-
-  try {
-    const { stdout } = await execFileAsync('powershell.exe', [
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      script
-    ], {
-      windowsHide: true,
-      timeout: 5000
-    });
-
-    return String(stdout || '').trim().toLowerCase() === 'true';
-  } catch (_) {
-    return false;
-  }
-}
-
-function getElevatedRelaunchArgs() {
-  if (process.defaultApp) {
-    return [app.getAppPath(), ...process.argv.slice(2)];
-  }
-
-  return process.argv.slice(1);
-}
-
-async function restartAsAdministrator() {
-  if (process.platform !== 'win32') {
-    return {
-      ok: false,
-      error: 'Administrator restart is only available on Windows.'
-    };
-  }
-
-  if (await isWindowsProcessElevated()) {
-    return {
-      ok: true,
-      alreadyElevated: true
-    };
-  }
-
-  const executable = process.execPath;
-  const launchArgs = getElevatedRelaunchArgs();
-  const argumentLine = launchArgs.map(quoteWindowsCommandLineArgument).join(' ');
-  const argumentExpression = argumentLine
-    ? ` -ArgumentList ${quotePowerShellLiteral(argumentLine)}`
-    : '';
-  const workingDirectory = process.cwd();
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    `Start-Process -FilePath ${quotePowerShellLiteral(executable)}${argumentExpression} -WorkingDirectory ${quotePowerShellLiteral(workingDirectory)} -Verb RunAs | Out-Null`
-  ].join('; ');
-
-  try {
-    await execFileAsync('powershell.exe', [
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      script
-    ], {
-      windowsHide: true,
-      timeout: 120000
-    });
-
-    setTimeout(() => {
-      app.quit();
-    }, 180);
-
-    return {
-      ok: true,
-      restarting: true
-    };
-  } catch (_) {
-    return {
-      ok: false,
-      error: 'Administrator restart was cancelled or could not be started.'
-    };
-  }
-}
-
-
-async function findWindowsExecutable(commandName) {
-  if (process.platform !== 'win32') {
-    return '';
-  }
-
-  try {
-    const { stdout } = await execFileAsync('where.exe', [commandName], {
-      windowsHide: true,
-      timeout: 5000
-    });
-
-    const first = String(stdout || '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean);
-
-    return first || '';
-  } catch (_) {
-    return '';
-  }
-}
-
-async function detectTerminalProfileShells() {
-  const results = [];
-
-  const add = (kind, name, executable, available, source = '') => {
-    results.push({
-      kind,
-      name,
-      executable: String(executable || ''),
-      available: Boolean(available),
-      source
-    });
-  };
-
-  if (process.platform === 'win32') {
-    const powershell = await findWindowsExecutable('powershell.exe');
-    const pwsh = await findWindowsExecutable('pwsh.exe');
-    const cmd = await findWindowsExecutable('cmd.exe');
-    const wsl = await findWindowsExecutable('wsl.exe');
-
-    add('powershell', 'Windows PowerShell', powershell || 'powershell.exe', Boolean(powershell), 'PATH');
-    add('powershell', 'PowerShell 7', pwsh || 'pwsh.exe', Boolean(pwsh), 'PATH');
-    add('cmd', 'Command Prompt', cmd || 'cmd.exe', Boolean(cmd), 'PATH');
-    add('wsl', 'Windows Subsystem for Linux', wsl || 'wsl.exe', Boolean(wsl), 'PATH');
-
-    const gitCandidates = [
-      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
-      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'usr', 'bin', 'bash.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Git', 'bin', 'bash.exe')
-    ].filter(Boolean);
-
-    const gitBash = gitCandidates.find((candidate) => {
-      try {
-        return fs.statSync(candidate).isFile();
-      } catch (_) {
-        return false;
-      }
-    }) || '';
-
-    add(
-      'git-bash',
-      'Git Bash',
-      gitBash || 'C:\\Program Files\\Git\\bin\\bash.exe',
-      Boolean(gitBash),
-      gitBash ? 'Common install path' : 'Not detected'
-    );
-
-    return results;
-  }
-
-  const defaultShell = process.env.SHELL || '/bin/bash';
-  add('custom', path.basename(defaultShell) || 'Shell', defaultShell, Boolean(defaultShell), 'SHELL');
-  return results;
-}
-
-function resolveTerminalProfileForServer(settings, server, requestedProfileId = '') {
-  const profiles = Array.isArray(settings?.terminalProfiles) ? settings.terminalProfiles : [];
-  const profileId = String(requestedProfileId || server?.profileId || '').trim();
-  const profile = profiles.find((item) => item.id === profileId) || null;
-
-  if (!profile) {
-    return { server, profile: null };
-  }
-
-  const effectiveServer = {
-    ...(server || {}),
-    id: server?.id || `terminal-profile:${profile.id}`,
-    type: 'local',
-    name: server?.name || profile.name || 'Terminal Profile',
-    description: server?.description || 'Terminal Profile',
-    group: server?.group || 'Profiles',
-    profileId: profile.id,
-    shell: profile.executable || server?.shell || '',
-    workingDirectory: String(server?.workingDirectory || '').trim()
-      || String(profile.workingDirectory || '').trim(),
-    terminalProfile: profile
-  };
-
-  return {
-    server: effectiveServer,
-    profile
-  };
 }
 
 
@@ -787,6 +563,7 @@ function sendUpdateStatus(status, message, details = {}) {
 }
 
 function getAutoUpdaterAvailability() {
+  if (V5_COMPARISON_MODE) return { ok: false, error: 'Updates are disabled for the isolated v5 performance test.' };
   if (!autoUpdater) {
     return {
       ok: false,
@@ -1048,19 +825,62 @@ function installDownloadedUpdate() {
   return updateStatus;
 }
 
+// Derive a normal/restored window size from the current monitor's usable area.
+// Electron's screen workArea uses DIP, so this also respects Windows display scaling.
+function getMonitorWindowOptions(workArea) {
+  const area = workArea || { x: 0, y: 0, width: 1320, height: 840 };
+  const availableWidth = Math.max(1, Math.floor(Number(area.width) || 1320));
+  const availableHeight = Math.max(1, Math.floor(Number(area.height) || 840));
+  const width = Math.min(availableWidth, Math.max(1, Math.floor(availableWidth * 0.92)), 1600);
+  const height = Math.min(availableHeight, Math.max(1, Math.floor(availableHeight * 0.92)), 960);
+  const x = Math.floor(Number(area.x) || 0) + Math.floor((availableWidth - width) / 2);
+  const y = Math.floor(Number(area.y) || 0) + Math.floor((availableHeight - height) / 2);
+
+  return {
+    x, y, width, height,
+    minWidth: Math.min(640, availableWidth),
+    minHeight: Math.min(420, availableHeight)
+  };
+}
+
+function keepMainWindowOnAvailableMonitor() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMaximized() || mainWindow.isFullScreen()) {
+    return;
+  }
+
+  const bounds = mainWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  if (!display?.workArea) {
+    return;
+  }
+
+  const area = display.workArea;
+  const width = Math.min(bounds.width, area.width);
+  const height = Math.min(bounds.height, area.height);
+  const x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - width));
+  const y = Math.max(area.y, Math.min(bounds.y, area.y + area.height - height));
+
+  if (x !== bounds.x || y !== bounds.y || width !== bounds.width || height !== bounds.height) {
+    mainWindow.setMinimumSize(Math.min(640, area.width), Math.min(420, area.height));
+    mainWindow.setBounds({ x, y, width, height });
+  }
+}
+
 function createWindow() {
   Menu.setApplicationMenu(null);
 
+  const launchPoint = screen.getCursorScreenPoint();
+  const launchDisplay = screen.getDisplayNearestPoint(launchPoint) || screen.getPrimaryDisplay();
+  const monitorWindowOptions = getMonitorWindowOptions(launchDisplay.workArea);
+
   mainWindow = new BrowserWindow({
-    width: 1320,
-    height: 840,
-    minWidth: 420,
-    minHeight: 360,
-    title: 'Advance Terminal',
+    ...monitorWindowOptions,
+    title: 'Advance Terminal V7 Development',
     icon: getAppIconPath(),
-    frame: true,
+    frame: false,
+    resizable: true,
     autoHideMenuBar: false,
-    backgroundColor: '#f3f3f3',
+    backgroundColor: '#101112',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -1072,9 +892,24 @@ function createWindow() {
 
   mainWindow.setMenu(null);
   mainWindow.setMenuBarVisibility(false);
+  const notifyWindowState = () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('window:state-changed', {
+        maximized: mainWindow.isMaximized(),
+        fullScreen: mainWindow.isFullScreen()
+      });
+    }
+  };
+  mainWindow.on('maximize', notifyWindowState);
+  mainWindow.on('unmaximize', notifyWindowState);
+  mainWindow.on('enter-full-screen', notifyWindowState);
+  mainWindow.on('leave-full-screen', notifyWindowState);
+  mainWindow.on('restore', notifyWindowState);
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
+    // Start maximized within this monitor's work area (not exclusive fullscreen).
+    mainWindow.maximize();
     mainWindow.show();
   });
 
@@ -1222,19 +1057,6 @@ function finalizeHealthResult(result) {
 function detectLocalProject(server) {
   const result = createHealthResult(server);
   const folder = String(server.workingDirectory || '').trim() || os.homedir();
-  const isWslProfile = server?.terminalProfile?.kind === 'wsl';
-
-  if (isWslProfile) {
-    if (String(server.workingDirectory || '').trim()) {
-      pushHealthCheck(result, 'Start folder', 'warning', `WSL path will be applied when the profile launches: ${server.workingDirectory}`);
-    } else {
-      pushHealthCheck(result, 'Start folder', 'ready', 'WSL will use its default Linux home/root behavior.');
-    }
-
-    pushHealthCheck(result, 'Terminal profile', 'ready', `WSL executable: ${server.terminalProfile.executable || 'wsl.exe'}`);
-    pushHealthCheck(result, 'Project detected', 'warning', 'Project markers are checked inside WSL after the terminal opens.');
-    return finalizeHealthResult(result);
-  }
 
   if (String(server.workingDirectory || '').trim()) {
     if (fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
@@ -1532,12 +1354,9 @@ async function testConnectionHealth(serverId) {
     };
   }
 
-  const effectiveLocalServer = server.type === 'local'
-    ? resolveTerminalProfileForServer(settings, server).server
-    : server;
   const result = server.type === 'remote'
     ? await testRemoteConnectionHealth(withStoredSecrets(server))
-    : detectLocalProject(effectiveLocalServer);
+    : detectLocalProject(server);
 
   addAuditLog({
     action: 'connection_health_checked',
@@ -1555,72 +1374,6 @@ function getWindowFromEvent(event) {
   return BrowserWindow.fromWebContents(event.sender);
 }
 
-
-function getWorkspaceWindowState(win) {
-  if (!win || win.isDestroyed()) {
-    return null;
-  }
-
-  const bounds = win.isMaximized() ? win.getNormalBounds() : win.getBounds();
-
-  return {
-    x: Math.round(bounds.x),
-    y: Math.round(bounds.y),
-    width: Math.max(420, Math.round(bounds.width)),
-    height: Math.max(360, Math.round(bounds.height)),
-    isMaximized: win.isMaximized()
-  };
-}
-
-function applyWorkspaceWindowState(win, value = {}) {
-  if (!win || win.isDestroyed()) {
-    return { ok: false, error: 'Window not found.' };
-  }
-
-  const current = win.getNormalBounds();
-  const requested = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const numberOrFallback = (input, fallback) => {
-    const numeric = Number(input);
-    return Number.isFinite(numeric) ? Math.round(numeric) : fallback;
-  };
-  const provisional = {
-    x: numberOrFallback(requested.x, current.x),
-    y: numberOrFallback(requested.y, current.y),
-    width: Math.max(420, numberOrFallback(requested.width, current.width)),
-    height: Math.max(360, numberOrFallback(requested.height, current.height))
-  };
-
-  const display = screen.getDisplayMatching(provisional);
-  const workArea = display?.workArea || screen.getPrimaryDisplay().workArea;
-  const width = Math.min(Math.max(420, provisional.width), Math.max(420, workArea.width));
-  const height = Math.min(Math.max(360, provisional.height), Math.max(360, workArea.height));
-  const minX = workArea.x;
-  const maxX = workArea.x + Math.max(0, workArea.width - width);
-  const minY = workArea.y;
-  const maxY = workArea.y + Math.max(0, workArea.height - height);
-  const bounds = {
-    x: Math.min(maxX, Math.max(minX, provisional.x)),
-    y: Math.min(maxY, Math.max(minY, provisional.y)),
-    width,
-    height
-  };
-
-  if (win.isMaximized()) {
-    win.unmaximize();
-  }
-
-  win.setBounds(bounds, false);
-
-  if (requested.isMaximized === true) {
-    win.maximize();
-  }
-
-  return {
-    ok: true,
-    state: getWorkspaceWindowState(win)
-  };
-}
-
 function runSettingsAutoBackup(reason, options = {}) {
   try {
     return createSettingsAutoBackup(reason, options);
@@ -1634,8 +1387,16 @@ function runSettingsAutoBackup(reason, options = {}) {
 }
 
 app.whenReady().then(() => {
+  // Keep the development and packaged Windows app notification identity stable.
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.artliedigital.advanceterminal');
+  }
   runSettingsAutoBackup('startup');
   createWindow();
+  // When a monitor is unplugged or its resolution changes, keep restored
+  // (non-maximized) windows within the available desktop work area.
+  screen.on('display-removed', keepMainWindowOnAvailableMonitor);
+  screen.on('display-metrics-changed', keepMainWindowOnAvailableMonitor);
   setupAutoUpdater();
 
   setTimeout(() => {
@@ -1663,64 +1424,17 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('app:getInfo', async () => {
-  const isElevated = await isWindowsProcessElevated();
-
   return {
     name: 'Advance Terminal',
     version: app.getVersion(),
-    displayVersion: `Advance Terminal V${String(app.getVersion())}`,
+    displayVersion: `Advance Terminal V${String(app.getVersion()).split('.')[0]}`,
     developer: 'Artlie Digital',
     website: 'www.artliedigital.com',
     userDataPath: app.getPath('userData'),
     settingsFilePath: getSettingsFilePath(),
     secretStorage: getSecretStorageStatus(),
-    platform: process.platform,
-    isElevated,
-    canElevate: process.platform === 'win32'
+    platform: process.platform
   };
-});
-
-ipcMain.handle('app:restartElevated', async () => {
-  return restartAsAdministrator();
-});
-
-
-ipcMain.handle('terminalProfiles:detectShells', async () => {
-  return {
-    ok: true,
-    shells: await detectTerminalProfileShells()
-  };
-});
-
-ipcMain.handle('dialog:selectTerminalExecutable', async (event) => {
-  const win = getWindowFromEvent(event);
-  const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Select terminal executable',
-    properties: ['openFile'],
-    filters: process.platform === 'win32'
-      ? [{ name: 'Executables', extensions: ['exe', 'cmd', 'bat', 'com'] }, { name: 'All Files', extensions: ['*'] }]
-      : [{ name: 'All Files', extensions: ['*'] }]
-  });
-
-  if (result.canceled || !result.filePaths?.length) {
-    return '';
-  }
-
-  return result.filePaths[0];
-});
-
-ipcMain.handle('dialog:selectTerminalFolder', async (event) => {
-  const win = getWindowFromEvent(event);
-  const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Select terminal start folder',
-    properties: ['openDirectory', 'createDirectory']
-  });
-
-  if (result.canceled || !result.filePaths?.length) {
-    return '';
-  }
-
-  return result.filePaths[0];
 });
 
 
@@ -1740,24 +1454,17 @@ ipcMain.handle('updates:install', async () => {
   return installDownloadedUpdate();
 });
 
-ipcMain.handle('window:getWorkspaceState', async (event) => {
+ipcMain.handle('window:getState', async (event) => {
   const win = getWindowFromEvent(event);
-
-  if (!win) {
+  if (!win || win.isDestroyed()) {
     return { ok: false, error: 'Window not found.' };
   }
-
   return {
     ok: true,
-    state: getWorkspaceWindowState(win)
+    maximized: win.isMaximized(),
+    fullScreen: win.isFullScreen()
   };
 });
-
-ipcMain.handle('window:applyWorkspaceState', async (event, payload) => {
-  const win = getWindowFromEvent(event);
-  return applyWorkspaceWindowState(win, payload || {});
-});
-
 
 ipcMain.handle('window:action', async (event, action) => {
   const win = getWindowFromEvent(event);
@@ -1798,24 +1505,6 @@ function sanitizeSettingsForExport(settings) {
 
   delete safeSettings.reportUsage;
   delete safeSettings.reportHistory;
-
-  if (Array.isArray(safeSettings.terminalProfiles)) {
-    safeSettings.terminalProfiles = safeSettings.terminalProfiles.map((profile) => {
-      const safeProfile = { ...profile };
-      const environment = safeProfile.environment && typeof safeProfile.environment === 'object'
-        ? { ...safeProfile.environment }
-        : {};
-
-      Object.keys(environment).forEach((key) => {
-        if (/(password|passwd|token|secret|api[_-]?key|private[_-]?key|credential|auth)/i.test(key)) {
-          environment[key] = '';
-        }
-      });
-
-      safeProfile.environment = environment;
-      return safeProfile;
-    });
-  }
 
   if (Array.isArray(safeSettings.servers)) {
     safeSettings.servers = safeSettings.servers.map((server) => {
@@ -1895,22 +1584,6 @@ function sanitizeSettingsForImport(settings) {
     safeSettings.terminalActions = source.terminalActions;
   }
 
-  if (Array.isArray(source.terminalProfiles)) {
-    safeSettings.terminalProfiles = source.terminalProfiles;
-  }
-
-  if (source.defaultTerminalProfileId) {
-    safeSettings.defaultTerminalProfileId = String(source.defaultTerminalProfileId);
-  }
-
-  if (Array.isArray(source.workspaces)) {
-    safeSettings.workspaces = source.workspaces;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(source, 'startupWorkspaceId')) {
-    safeSettings.startupWorkspaceId = String(source.startupWorkspaceId || '');
-  }
-
   if (source.ui && typeof source.ui === 'object') {
     safeSettings.ui = source.ui;
   }
@@ -1926,8 +1599,6 @@ function buildSettingsImportPreview(payload, sanitizedSettings, filePath) {
   const servers = Array.isArray(sanitizedSettings.servers) ? sanitizedSettings.servers : [];
   const commands = Array.isArray(sanitizedSettings.commands) ? sanitizedSettings.commands : [];
   const terminalActions = Array.isArray(sanitizedSettings.terminalActions) ? sanitizedSettings.terminalActions : [];
-  const terminalProfiles = Array.isArray(sanitizedSettings.terminalProfiles) ? sanitizedSettings.terminalProfiles : [];
-  const workspaces = Array.isArray(sanitizedSettings.workspaces) ? sanitizedSettings.workspaces : [];
   const sshConnections = servers.filter((server) => server && server.type === 'remote').length;
   const localConnections = servers.filter((server) => server && server.type !== 'remote').length;
   const ui = sanitizedSettings.ui && typeof sanitizedSettings.ui === 'object' ? sanitizedSettings.ui : {};
@@ -1942,8 +1613,6 @@ function buildSettingsImportPreview(payload, sanitizedSettings, filePath) {
     localConnections,
     commands: commands.length,
     terminalActions: terminalActions.length,
-    terminalProfiles: terminalProfiles.length,
-    workspaces: workspaces.length,
     hasAppearance: Boolean(ui.theme),
     hasNotification: Boolean(ui.notificationPosition),
     warnings: [
@@ -2100,22 +1769,6 @@ function scrubInlineRepairSecrets(settings) {
 
   if (Array.isArray(source.terminalActions)) {
     safeSettings.terminalActions = source.terminalActions;
-  }
-
-  if (Array.isArray(source.terminalProfiles)) {
-    safeSettings.terminalProfiles = source.terminalProfiles;
-  }
-
-  if (source.defaultTerminalProfileId) {
-    safeSettings.defaultTerminalProfileId = String(source.defaultTerminalProfileId);
-  }
-
-  if (Array.isArray(source.workspaces)) {
-    safeSettings.workspaces = source.workspaces;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(source, 'startupWorkspaceId')) {
-    safeSettings.startupWorkspaceId = String(source.startupWorkspaceId || '');
   }
 
   if (source.ui && typeof source.ui === 'object') {
@@ -3107,7 +2760,7 @@ ipcMain.handle('settings:importPreview', async (event) => {
     const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     const importedSettings = sanitizeSettingsForImport(unwrapSettingsImportPayload(payload));
 
-    if (!importedSettings.servers && !importedSettings.commands && !importedSettings.terminalActions && !importedSettings.terminalProfiles && !importedSettings.workspaces && !importedSettings.ui) {
+    if (!importedSettings.servers && !importedSettings.commands && !importedSettings.terminalActions && !importedSettings.ui) {
       pendingSettingsImport = null;
       return {
         ok: false,
@@ -3352,44 +3005,38 @@ ipcMain.handle('connection:testHealth', async (event, payload) => {
   }
 });
 
+// Native Windows notifications are initiated by existing terminal activity signals,
+// but ownership, background state, de-duplication and click routing live in main.
+const notifyProcessCompletion = createProcessCompletionNotifier({
+  Notification,
+  getWindowFromEvent,
+  getMainWindow: () => mainWindow,
+  terminalManager,
+  platform: process.platform
+});
+ipcMain.on('terminal:activity-complete', (event, payload) => {
+  notifyProcessCompletion(event, payload);
+});
+
 ipcMain.handle('terminal:create', async (event, payload) => {
+  // Quick local terminals are intentionally unsaved. Only these two fixed
+  // shells are accepted; the renderer cannot supply an executable or cwd.
+  const quickLocal = Object.prototype.hasOwnProperty.call(payload || {}, 'quickLocalShell');
+  if (quickLocal && (!['powershell', 'cmd'].includes(payload.quickLocalShell) || process.platform !== 'win32')) {
+    return { ok: false, code: 'INVALID_LOCAL_SHELL', error: 'Unsupported quick local shell.' };
+  }
   const settings = readSettings();
-  const requestedProfileId = String(payload?.profileId || '').trim();
-  const requestedWorkingDirectory = String(payload?.workingDirectory || '').trim().slice(0, 4096);
-  let server = settings.servers.find((item) => item.id === payload.serverId) || null;
-
-  if (server?.type === 'local' && requestedWorkingDirectory) {
-    server = {
-      ...server,
-      workingDirectory: requestedWorkingDirectory
-    };
-  }
-
-  if (!server && requestedProfileId) {
-    const profile = (settings.terminalProfiles || []).find((item) => item.id === requestedProfileId);
-
-    if (profile) {
-      server = {
-        id: `terminal-profile:${profile.id}`,
-        type: 'local',
-        name: profile.name || 'Terminal Profile',
-        description: 'Terminal Profile',
-        group: 'Profiles',
-        profileId: profile.id,
-        shell: profile.executable || '',
-        workingDirectory: String(payload?.workingDirectory || '').trim()
-      };
-    }
-  }
+  const server = quickLocal ? {
+    id: `quick-local-${String(payload.terminalId || '').slice(0, 100)}`,
+    type: 'local',
+    name: payload.quickLocalShell === 'cmd' ? 'Command Prompt' : 'PowerShell',
+    shell: payload.quickLocalShell === 'cmd' ? 'cmd.exe' : 'powershell.exe',
+    workingDirectory: ''
+  } : settings.servers.find((item) => item.id === payload?.serverId);
 
   if (!server) {
-    return { ok: false, error: requestedProfileId ? 'Terminal profile not found.' : 'Server not found.' };
+    return { ok: false, error: 'Server not found.' };
   }
-
-  const resolved = server.type === 'local'
-    ? resolveTerminalProfileForServer(settings, server, requestedProfileId)
-    : { server, profile: null };
-  server = resolved.server;
 
   const terminalId = payload.terminalId;
   const connectingSession = terminalManager.getConnectingSessionInfo(terminalId);
@@ -3412,7 +3059,7 @@ ipcMain.handle('terminal:create', async (event, payload) => {
   }
 
   const sender = event.sender;
-  const secrets = getStoredSecretsForServer(server, payload.secrets || {});
+  const secrets = quickLocal ? {} : getStoredSecretsForServer(server, payload.secrets || {});
 
   try {
     await terminalManager.create({

@@ -1,191 +1,81 @@
-# Advance Terminal v6.5.1
+# Advance Terminal V4
 
-**Advance Terminal** is an open-source Windows desktop terminal and SSH workspace maintained by **Artlie Digital**.
+Advance Terminal is a standalone Electron desktop app for local terminal sessions, remote SSH connections, server management, SSH key generation, command shortcuts, audit logs, live console output, and session reports.
 
-Website: https://www.artliedigital.com
-Repository: https://github.com/eiltraX/advance-terminal
+This package is **not Laravel** and is not cloud-hosted.
 
-Advance Terminal is built with Electron and provides local terminal sessions, SSH connections, terminal profiles, workspaces, split terminals, advanced tabs, command shortcuts, activity logging, session reports, and Windows-focused terminal tooling.
+## Version
 
-## Current Version
+Current app version: **4.0.0**.
 
-**6.5.1**
+## Development baseline
 
-The top-right application badge displays the complete installed version, for example:
-
-```text
-Advance Terminal V6.5.1
-```
-
-## Highlights
-
-### Terminal Profiles
-
-Create reusable terminal profiles for:
-
-- PowerShell
-- Command Prompt
-- Git Bash
-- WSL
-- custom executables
-
-Profiles can define arguments, starting directories, environment variables, icons, colors, and the default local terminal.
-
-### Command Palette
-
-Open the Command Palette with:
-
-```text
-Ctrl+Shift+P
-```
-
-Search and launch:
-
-- Terminal Profiles
-- Local connections
-- SSH connections
-- saved commands
-- open tabs
-- Terminal Actions
-- Settings pages
-- common application actions
-
-### Workspaces
-
-Save and restore complete working environments, including:
-
-- Local and SSH tabs
-- working directories
-- Terminal Profiles
-- tab order
-- active tab
-- split-terminal layouts
-- toolbar layout
-- window size and position
-- optional startup workspace
-
-SSH passwords and key passphrases are not stored inside Workspace definitions.
-
-### Split Terminals
-
-- Split Right
-- Split Down
-- up to four panes per tab
-- Local, SSH, and Terminal Profile sessions per pane
-- draggable split dividers
-- active-pane command and clipboard targeting
-- close individual panes
-- Workspace save/restore support
-
-### Advanced Tabs
-
-- rename tabs
-- pin/unpin tabs
-- persistent pinned tabs
-- tab colors
-- duplicate tabs
-- drag/reorder tabs
-- reopen closed tabs
-- close other tabs
-- close tabs to the right
-- Workspace metadata persistence
-
-### Toolbar Builder v2
-
-Terminal Actions support:
-
-- drag-and-drop ordering
-- separators
-- button groups
-- dropdown menus
-- custom keyboard shortcuts
-- custom icons
-- custom colors
-- Local-only actions
-- SSH-only actions
-- Administrator-only actions
-- Terminal Profile-specific actions
-- instant Save Toolbar updates
-
-### Terminal Improvements
-
-- native xterm scrolling and scrollback
-- responsive Windows resize/Snap layouts
-- smart Ctrl+C behavior
-- Ctrl+V paste
-- Ctrl+Shift+C / Ctrl+Shift+V
-- highlight + right-click copy
-- safe paste protection
-- Activity Feed close/reopen support
-- Administrator status and Restart as Administrator
-- searchable New Terminal / connection picker
-
-## Development Baseline
-
-Before release work, the following should remain true:
+Before new feature work, this baseline should stay true:
 
 - `npm run check` passes.
-- Local terminals open normally on Windows.
-- terminal input, scrollback, mouse-wheel scrolling, and native scrollbar work.
-- SSH password and private-key connections still work.
-- saved SSH passwords/passphrases are not written to `settings.json`.
-- Workspaces restore without storing SSH secrets.
-- pinned tabs survive restart.
-- split terminals resize correctly.
-- Toolbar Builder actions remain compatible.
-- reports can be generated and saved.
-- renderer helper files load before `renderer.js`.
+- Local Terminal opens on Windows.
+- `npm run check` works inside the app's Local Terminal.
+- SSH password connections still work.
+- Saved SSH passwords/passphrases are not written to `settings.json`.
+- Reports can be generated and saved.
+- Renderer helper files load before `renderer.js`.
 
-## Development
+## Main app screens
 
-Install dependencies:
+- Main Terminal Session screen
+- Connections panel
+- Commands panel
+- Settings screen
+- Appearance tab
+- Terminal Actions tab
+- SSH Keys tab
+- Audit Log tab
+- About tab
+- Live Console drawer
+- Session Report modal
+
+## Development run
+
+Open a terminal in this folder and run:
 
 ```bash
 npm install
-```
-
-Run validation:
-
-```bash
 npm run check
-```
-
-Start the application:
-
-```bash
 npm start
 ```
 
-On Windows you can also run:
+On Windows, you can also double-click:
 
 ```text
 Start-Advance-Terminal.bat
 ```
 
-## Project Structure
+The BAT file checks Node.js, installs dependencies when `node_modules` is missing, runs the syntax check, and starts the app.
+
+## Project structure
 
 ```text
-src/main/main.js                         Electron main process and IPC
-src/main/preload.js                      Safe renderer bridge
-src/main/store.js                        Local settings, workspaces and audit storage
-src/main/secret-store.js                 Encrypted saved credential storage
-src/main/terminal-manager.js             Local and SSH terminal sessions
-src/main/key-manager.js                  SSH key generation
-src/renderer/index.html                  Renderer UI markup
-src/renderer/renderer.js                 Main renderer controller
-src/renderer/js/renderer-foundation.js   Shared safe UI/report helpers
-src/renderer/js/renderer-terminal-helpers.js
-                                         Terminal/session helpers
-src/renderer/js/renderer-connection-helpers.js
-                                         Connection list/health helpers
-src/renderer/js/renderer-report-helpers.js
-                                         Report/settings/runtime helpers
-src/renderer/styles.css                  Renderer styling
-scripts/check-foundation.js              Baseline regression checks
-build/                                   Installer icons and NSIS resources
+src/main/main.js                       Electron main process and IPC
+src/main/preload.js                    Safe renderer bridge
+src/main/store.js                      Local settings and audit storage
+src/main/secret-store.js               Encrypted saved credential storage
+src/main/terminal-manager.js           Local and SSH terminal sessions
+src/main/key-manager.js                SSH key generation
+src/renderer/index.html                Renderer UI markup
+src/renderer/renderer.js               Main renderer controller
+src/renderer/js/renderer-foundation.js Shared safe UI/report helpers
+src/renderer/js/renderer-terminal-helpers.js Terminal/session helpers
+src/renderer/js/renderer-connection-helpers.js Connection list/health helpers
+src/renderer/js/renderer-report-helpers.js Report/settings/runtime helpers
+src/renderer/styles.css                Renderer styling
+scripts/check-foundation.js            Baseline regression checks
 ```
 
-Renderer helper load order in `src/renderer/index.html` must remain:
+## Renderer cleanup status
+
+The renderer has been partially split into helper files. Keep new shared logic in the matching helper file instead of adding more utility code to `src/renderer/renderer.js`.
+
+Load order in `index.html` must stay:
 
 ```text
 renderer-foundation.js
@@ -195,69 +85,54 @@ renderer-report-helpers.js
 renderer.js
 ```
 
-## Secure Credential Storage
+## Secure credential storage
 
-Saved SSH passwords and SSH key passphrases are not written to plaintext `settings.json`.
+Saved SSH passwords and SSH key passphrases are not written to `settings.json`.
 
-Advance Terminal uses Electron `safeStorage` for saved credentials when encryption is available. Non-secret connection metadata and flags such as `savePassword` and `savePassphrase` may remain in the settings file.
+Secrets are stored in the Electron `userData` folder through Electron `safeStorage` when encryption is available. The settings file keeps only non-secret connection metadata and flags such as `savePassword` and `savePassphrase`.
 
-Settings export/import is designed to exclude:
+Settings export/import remains secret-safe:
 
-- saved passwords
-- key passphrases
-- SSH private-key contents
-- report history
-- audit logs
+- saved passwords are not exported
+- key passphrases are not exported
+- SSH private key file contents are not exported
+- report history and audit logs are not imported from settings backups
 
-## Network and Privacy
+## Windows build
 
-Advance Terminal includes network features that are used for functions such as:
+The build is configured for Electron Builder and NSIS.
 
-- connecting to SSH hosts configured by the user
-- checking GitHub Releases for application updates
-- downloading application updates when requested or enabled
-
-Advance Terminal should not use network access to silently execute remote commands or connect to arbitrary hosts that were not configured by the user.
-
-See the full [Code signing policy](CODE_SIGNING_POLICY.md) for the project privacy and signing policy.
-
-## Windows Build
-
-Advance Terminal uses Electron Builder with an NSIS Windows installer.
-
-Create an unpacked Windows build:
+To create an unpacked Windows app folder:
 
 ```bash
 npm run pack:win
 ```
 
-Create the Windows installer:
+To create a Windows installer:
 
 ```bash
 npm run dist:win
 ```
 
-Or:
+Or run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Build-Windows-Installer.ps1
 ```
 
-Build output is written to:
+Build output is saved in:
 
 ```text
-dist/
+dist
 ```
 
-Release assets normally include:
+Expected installer filename pattern:
 
 ```text
-Advance-Terminal-Setup-6.5.1-x64.exe
-Advance-Terminal-Setup-6.5.1-x64.exe.blockmap
-latest.yml
+Advance Terminal-Setup-4.0.0-x64.exe
 ```
 
-The application and installer use resources from:
+The app and installer use the bundled files in `build/`:
 
 ```text
 build/icon.ico
@@ -265,92 +140,87 @@ build/icon.png
 build/installer-dependency-checks.nsh
 ```
 
-## Auto Updates
+These files are included through Electron Builder `extraResources`.
 
-Advance Terminal uses GitHub Releases for Windows update metadata.
+## Features
+
+- Local terminal sessions using bundled `node-pty`
+- Remote SSH terminal sessions using the integrated `ssh2` engine
+- Password SSH without Windows `ssh.exe`
+- Private-key SSH using local private key files
+- SSH key generation through local `ssh-keygen`
+- Local settings stored in Electron `userData`
+- Secure local credential storage through Electron `safeStorage`
+- Local audit log
+- Windows-style desktop UI
+- Terminal action toolbar
+- Daily scoped report export/copy flow
+- Report History
+- Error Assistant summaries
+
+## Windows shell notes
+
+For local terminal sessions, the default shell is PowerShell. You may set the Shell Path in Settings to:
 
 ```text
-Repository: eiltraX/advance-terminal
+powershell.exe
+cmd.exe
+```
+
+For Remote SSH, add a server in Settings and choose Private Key or Password authentication.
+
+Generated SSH private keys are stored locally in the Electron `userData` folder.
+
+## Final pre-development cleanup notes
+
+This cleanup baseline:
+
+- keeps saved credentials out of plaintext settings
+- fixes Windows Local Terminal `npm`/`npx` command compatibility
+- splits shared renderer helper logic into dedicated files
+- adds `scripts/check-foundation.js` regression checks
+- keeps installer/build metadata aligned with V4
+
+
+## Auto-update release flow
+
+Advance Terminal is configured for GitHub Releases auto-update:
+
+```text
+Repo: eiltraX/advance-terminal
 Provider: GitHub Releases
 Windows target: NSIS
 ```
 
-For normal local builds:
+Auto-update requires `electron-updater` as an app dependency. After applying the patch, run:
+
+```powershell
+npm install
+npm run check
+```
+
+For normal local installer builds that do not publish:
 
 ```powershell
 npm run dist:win
 ```
 
-For configured release builds:
+For release builds that publish update metadata and installer assets to GitHub Releases:
 
 ```powershell
 npm run release:win
 ```
 
-Never commit GitHub tokens, SignPath API tokens, private keys, passwords, or other credentials to this repository.
+Before publishing, save a valid GitHub token locally as `GH_TOKEN`. Never commit or share the token.
 
-## Installation
+```powershell
+setx GH_TOKEN "PASTE_NEW_TOKEN_HERE"
+```
 
-Download the latest official Windows installer from the GitHub Releases page and run it.
+Close PowerShell, reopen it, then verify only that the token exists:
 
-Windows may display security warnings for unsigned releases. Official releases are intended to use trusted code signing once the project is approved for the SignPath Foundation open-source signing program.
+```powershell
+if ($env:GH_TOKEN) { "GH_TOKEN saved" } else { "GH_TOKEN missing" }
+```
 
-## Uninstallation
-
-Advance Terminal can be uninstalled through Windows:
-
-1. Open **Settings**.
-2. Open **Apps → Installed apps**.
-3. Find **Advance Terminal**.
-4. Choose **Uninstall**.
-
-The installer is configured not to automatically delete the application data directory on uninstall. This helps prevent accidental loss of local settings and connection definitions.
-
-## Code signing policy
-
-**Free code signing provided by SignPath.io, certificate by SignPath Foundation.**
-
-Advance Terminal's complete code signing and privacy policy is available in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
-
-Current project roles:
-
-- **Committer / reviewer:** eiltraX / Artlie Digital
-- **Approver:** eiltraX / Artlie Digital
-
-Every official signing request must be manually approved by an authorized approver.
-
-Official signed builds must originate from the public Advance Terminal source repository and the approved trusted build workflow.
-
-## License
-
-Advance Terminal source code is licensed under the [MIT License](LICENSE).
-
-Copyright (c) 2026 **Artlie Digital**
-https://www.artliedigital.com
-
-## Branding
-
-The MIT License applies to the source code. It does not permit third parties to falsely represent modified builds as official Artlie Digital releases.
-
-See [TRADEMARKS.md](TRADEMARKS.md) for the project's branding policy.
-
-## Security
-
-Do not commit or publish:
-
-- `.env` files
-- GitHub tokens
-- SignPath API tokens
-- SSH private keys
-- saved passwords
-- key passphrases
-- local backup ZIPs
-- Electron `userData`
-- generated `dist/` files unless intentionally published as release assets
-
-Report security-sensitive issues privately to Artlie Digital through the official project contact channels.
-
-## Maintainer
-
-**Artlie Digital**
-https://www.artliedigital.com
+The installed app checks for updates on startup and also provides a manual Check for Updates button in Settings → About. Release builds should be made from the same source version that is uploaded to GitHub Releases.

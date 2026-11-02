@@ -1,0 +1,215 @@
+/* V7 bottom command composer — separate from xterm, no input polling. */
+.v7-command-composer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 8px 6px;
+  border-top: 1px solid #1f2124;
+  background: #0b0c0e;
+  color: #e5e7eb;
+}
+.v7-composer-top-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+}
+.v7-composer-icon, .v7-composer-send,
+.v7-composer-actions .dynamic-terminal-action {
+  flex: 0 0 28px !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 5px !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: #1b1c1e !important;
+  color: #b9c3d0 !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.v7-composer-icon:hover, .v7-composer-send:hover:not(:disabled),
+.v7-composer-actions .dynamic-terminal-action:hover:not(:disabled) {
+  background: #303238 !important;
+  color: #fff !important;
+}
+.v7-composer-icon:focus-visible, .v7-composer-send:focus-visible,
+.v7-composer-actions .dynamic-terminal-action:focus-visible {
+  outline: 2px solid #4ca4dc;
+  outline-offset: 1px;
+}
+.v7-composer-icon svg, .v7-composer-send svg,
+.v7-composer-actions .dynamic-terminal-action .tool-icon svg {
+  width: 16px !important;
+  height: 16px !important;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.v7-composer-actions.dynamic-toolbar-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  min-height: 28px !important; /* override the shared 60px toolbar minimum */
+  min-width: 0;
+  padding: 1px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.v7-composer-actions .dynamic-terminal-action .tool-icon {
+  width: 17px !important;
+  height: 17px !important;
+  flex: 0 0 17px !important;
+  display: grid !important;
+  place-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.v7-composer-actions .dynamic-terminal-action > span:not(.tool-icon) { display: none !important; }
+/* Keep every terminal action neutral, regardless of its action kind. */
+.v7-composer-actions .dynamic-terminal-action {
+  --tool-accent: #c8cbd0 !important;
+  --tool-tint: rgba(255, 255, 255, 0.06) !important;
+  color: #c8cbd0 !important;
+}
+.v7-composer-actions .dynamic-terminal-action .tool-icon,
+:root[data-theme="dark"] .v7-composer-actions .dynamic-terminal-action:hover .tool-icon {
+  color: #c8cbd0 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.v7-composer-actions .dynamic-terminal-action .tool-icon svg {
+  filter: none !important;
+  stroke: currentColor !important;
+}
+/* Small centered neutral acknowledgement; never enlarge or recolor the button. */
+.v7-composer-actions .dynamic-terminal-action.is-action-confirmed,
+.v7-composer-actions .dynamic-terminal-action.is-action-confirmed .tool-icon,
+:root[data-theme="dark"] .v7-composer-actions .dynamic-terminal-action.is-action-confirmed:hover .tool-icon {
+  color: #d9dde2 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  animation: none !important;
+  transform: none !important;
+}
+.v7-composer-actions .dynamic-terminal-action.is-action-confirmed .tool-icon::after {
+  content: "\2713";
+  color: #d9dde2 !important;
+  font-family: 'Segoe UI Symbol', 'Segoe UI', sans-serif;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+}
+/* The folder launcher still exists elsewhere (+ New Session); hide it here only.
+   Keep its DOM node so the existing JS composer initialization remains intact. */
+#v7-composer-project { display: none !important; }
+.v7-composer-actions .dynamic-terminal-action:disabled, .v7-composer-send:disabled {
+  opacity: .4; cursor: not-allowed;
+}
+.v7-composer-automatic {
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-direction: row; /* prevent global label column layout from adding height */
+  align-items: center;
+  gap: 6px;
+  color: #a3a6ad;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* Flat native checkbox rendered as a compact switch; remains a real checkbox. */
+.v7-composer-automatic input {
+  appearance: none;
+  position: relative;
+  width: 27px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid #616775;
+  border-radius: 999px;
+  background: #25272c;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.v7-composer-automatic input::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #cbd0d7;
+  transition: transform 120ms ease;
+}
+.v7-composer-automatic input:checked {
+  background: #155d83;
+  border-color: #2989b3;
+}
+.v7-composer-automatic input:checked::before { transform: translateX(12px); background: #fff; }
+.v7-composer-automatic input:focus-visible { outline: 2px solid #4ca4dc; outline-offset: 2px; }
+.v7-composer-edit-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+}
+.v7-composer-edit-row textarea {
+  display: block;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  border: 1px solid #303238;
+  background: #17191c;
+  color: #f1f1f3;
+  font: 13px/20px Consolas, 'Cascadia Code', monospace;
+  resize: none;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  caret-color: #f5f5f5;
+}
+.v7-composer-edit-row textarea::placeholder { color: #7c7f87; }
+.v7-composer-send { background: #155d83 !important; }
+:root:not([data-theme="dark"]) .v7-command-composer { background: #f8f9fa; border-color: #ddd; color: #333; }
+:root:not([data-theme="dark"]) .v7-composer-edit-row textarea { background: white; color: #222; border-color: #bbb; }
+:root:not([data-theme="dark"]) .v7-composer-automatic { color: #555; }
+@media(max-width: 800px) {
+  .v7-command-composer { padding: 6px 8px; }
+  .v7-composer-automatic span { display: none; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .v7-composer-icon, .v7-composer-send, .v7-composer-actions .dynamic-terminal-action { transition: none !important; }
+  .v7-composer-automatic input::before { transition: none; }
+}
+
+/* V7 focused command input: thin, low-contrast emphasis. Override the shared
+   input:focus blue ring without changing other focus indicators or input logic. */
+.v7-command-composer .v7-composer-edit-row textarea:is(:focus, :focus-visible) {
+  border-color: #426575;
+  box-shadow: 0 0 0 0.5px rgba(95, 151, 173, 0.30);
+  outline: none;
+}

@@ -1,0 +1,25 @@
+// Advance Terminal v7 version label and isolation consistency check.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+const pkg = JSON.parse(read('package.json'));
+const lock = JSON.parse(read('package-lock.json'));
+const main = read('src/main/main.js');
+const html = read('src/renderer/index.html');
+const renderer = read('src/renderer/renderer.js');
+assert.equal(pkg.version, '7.0.0');
+assert.equal(lock.version, '7.0.0');
+assert.equal(lock.packages[''].version, '7.0.0');
+assert.match(main, /title: 'Advance Terminal V7 Development'/);
+assert.match(main, /displayVersion: `Advance Terminal V\${String\(app\.getVersion\(\)\)\.split\('\.'\)\[0\]}`/);
+assert.match(main, /advance-terminal-v5-performance-test/);
+assert.match(main, /app\.setPath\('userData', v5ComparisonProfile\)/);
+assert.match(main, /Updates are disabled for the isolated v5 performance test/);
+assert.equal((html.match(/Advance Terminal V7/g) || []).length, 3);
+assert.ok(!html.includes('Advance Terminal V5'));
+assert.ok(!renderer.includes('Advance Terminal V5'));
+assert.match(renderer, /Advance Terminal V7/);
+assert.ok(!html.includes('warp-theme.css'));
+console.log('PASS: v7 version metadata, UI labels, original theme, isolated profile, and updater guard');

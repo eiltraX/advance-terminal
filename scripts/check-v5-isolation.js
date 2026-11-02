@@ -1,0 +1,13 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const main = fs.readFileSync(path.join(__dirname, '../src/main/main.js'), 'utf8');
+const prefix = main.indexOf("const v5ComparisonProfile = path.join(app.getPath('appData'), 'advance-terminal-v5-performance-test');");
+const store = main.indexOf("require('./store')");
+const ready = main.indexOf('app.whenReady().then(');
+assert(prefix !== -1 && prefix < store && prefix < ready, 'Isolated profile must be set before stores or startup');
+assert(main.includes("app.setPath('userData', v5ComparisonProfile);"));
+assert(main.includes("app.setPath('sessionData', v5ComparisonProfile);"));
+assert(main.includes("return { ok: false, error: 'Updates are disabled for the isolated v5 performance test.' };"));
+assert(main.includes("title: 'Advance Terminal V7 Development'"));
+console.log('PASS: v7 development uses the separate v5 test profile; updates are disabled.');

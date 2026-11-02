@@ -1,7 +1,7 @@
 {
   "name": "advance-terminal-standalone",
-  "version": "6.5.1",
-  "description": "Advance Terminal V6 by Artlie Digital. A Windows desktop terminal workspace with reusable local shell profiles, SSH connections, server management, terminal actions, audit logs, reports, and safe clipboard controls.",
+  "version": "7.0.1",
+  "description": "Advance Terminal v7.0.0 — Best Stable Performance Edition, with responsive window sizing, animated toolbar feedback, advanced tabs, and persistent pinned tabs.",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
@@ -30,7 +30,7 @@
   "build": {
     "appId": "com.artliedigital.advanceterminal",
     "productName": "Advance Terminal",
-    "copyright": "Copyright \u00a9 2026 Artlie Digital",
+    "copyright": "Copyright © 2026 Artlie Digital",
     "directories": {
       "output": "dist"
     },
@@ -53,7 +53,7 @@
           ]
         }
       ],
-      "artifactName": "Advance-Terminal-Setup-${version}-${arch}.${ext}",
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "icon": "build/icon.ico"
     },
     "nsis": {
@@ -90,7 +90,6 @@
       }
     ]
   },
-  "license": "MIT",
   "author": "Artlie Digital",
   "homepage": "https://www.artliedigital.com"
 }

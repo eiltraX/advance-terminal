@@ -1,0 +1,116 @@
+/* Advance Terminal V7 — targeted layout and scrollbar consistency.
+   No changes to terminal input, connection state, or session lifecycle. */
+/* Near-black system styling, including xterm's scrollback rail. */
+:root {
+  --v7-scroll-thumb: #2e3034;
+  --v7-scroll-hover: #50545a;
+}
+:root[data-theme="dark"] {
+  --v7-scroll-thumb: #292c30;
+  --v7-scroll-hover: #4a4f55;
+}
+
+/* FitAddon reads the height/width of .xterm's PARENT, then subtracts
+   padding on .xterm itself. Padding .terminal-pane instead caused the addon
+   to count space reserved for the gutter as usable terminal rows/columns,
+   clipping the final row above the composer. Put the gutter on the element
+   the addon actually measures, without changing the visual offsets. */
+#terminal-host > .terminal-pane {
+  padding: 0;
+}
+#terminal-host > .terminal-pane > .xterm {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 8px 16px;
+}
+
+/* Chromium/Electron: explicitly use WebKit scrollbar pseudo-elements.
+   A non-auto scrollbar-width/color overrides ::-webkit-scrollbar in modern
+   Chromium, producing the thicker, square OS scrollbar seen in Windows. */
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport) {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-track {
+  background: transparent;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb {
+  background: var(--v7-scroll-thumb);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  min-height: 28px;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb:hover {
+  background: var(--v7-scroll-hover);
+  background-clip: padding-box;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+:root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
+    .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
+    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Existing dark-specific standard properties in other stylesheets must not
+   re-enable native scrollbars after the custom rules are loaded. */
+:root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
+    .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
+    .restore-points-list, .activity-feed-content, .xterm-viewport) {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+/* Older dark-theme list rules are more specific than the generic pseudo-
+   element rules above. Match that specificity to enforce one dark thumb. */
+:root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
+    .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
+    .restore-points-list, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb {
+  background: var(--v7-scroll-thumb);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+:root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
+    .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
+    .restore-points-list, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb:hover {
+  background: var(--v7-scroll-hover);
+  background-clip: padding-box;
+}
+
+/* Let the final saved connection/command row scroll fully above the footer. */
+.v7-flyout-content :is(.server-list, .command-list) {
+  padding: 3px 8px 14px;
+  scroll-padding-bottom: 14px;
+}
+.v7-flyout-content > .left-tab-panel.v7-flyout-visible { min-height: 0; }

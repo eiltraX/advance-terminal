@@ -25,10 +25,11 @@ function quoteForPosixShell(value) {
 }
 
 function normalizeTerminalSize(cols, rows) {
-  // Split panes and narrow Windows snap layouts can legitimately fit well below 20 columns.
-  // Keep a small safety floor so xterm and the PTY agree on wrapping without rejecting compact panes.
-  const safeCols = Math.max(10, Math.min(500, Number(cols || 120)));
-  const safeRows = Math.max(4, Math.min(200, Number(rows || 32)));
+  // Honour the dimensions measured by xterm's FitAddon. A fixed 80x24
+  // minimum desynchronizes the process/SSH window on small desktop layouts.
+  // A floor of two protects node-pty/SSH from invalid zero-sized windows.
+  const safeCols = Math.max(2, Math.min(500, Number(cols || 120)));
+  const safeRows = Math.max(2, Math.min(200, Number(rows || 32)));
 
   return {
     cols: Number.isFinite(safeCols) ? Math.floor(safeCols) : 120,
@@ -234,40 +235,6 @@ function getPowerShellStartupArgs(shell) {
   ];
 }
 
-
-function getTerminalProfileArgs(profile, shell) {
-  if (!profile || !Array.isArray(profile.args)) {
-    return getPowerShellStartupArgs(shell);
-  }
-
-  const args = profile.args
-    .map((value) => String(value ?? ''))
-    .slice(0, 40);
-
-  return args.length ? args : getPowerShellStartupArgs(shell);
-}
-
-function getTerminalProfileEnv(profile) {
-  const env = getLocalTerminalEnv();
-  const custom = profile?.environment;
-
-  if (!custom || typeof custom !== 'object' || Array.isArray(custom)) {
-    return env;
-  }
-
-  Object.entries(custom).slice(0, 80).forEach(([rawKey, rawValue]) => {
-    const key = String(rawKey || '').trim();
-
-    if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) {
-      return;
-    }
-
-    env[key] = String(rawValue ?? '');
-  });
-
-  return env;
-}
-
 class TerminalManager {
   constructor() {
     this.sessions = new Map();
@@ -341,27 +308,24 @@ class TerminalManager {
       return;
     }
 
-    const profile = server.terminalProfile && typeof server.terminalProfile === 'object'
-      ? server.terminalProfile
-      : null;
-    const shell = String(profile?.executable || server.shell || '').trim()
+    const shell = server.shell
       || (process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'));
 
-    const hasStartFolder = Boolean(String(server.workingDirectory || profile?.workingDirectory || '').trim());
+    const hasStartFolder = Boolean(String(server.workingDirectory || '').trim());
     const requestedCwd = hasStartFolder
-      ? String(server.workingDirectory || profile?.workingDirectory || '').trim()
+      ? String(server.workingDirectory || '').trim()
       : getLocalRootDirectory();
-    const isWslProfile = profile?.kind === 'wsl';
-    const cwd = isWslProfile
-      ? getLocalRootDirectory()
-      : (requestedCwd && fs.existsSync(requestedCwd) ? requestedCwd : getLocalRootDirectory());
+
+    const cwd = requestedCwd && fs.existsSync(requestedCwd)
+      ? requestedCwd
+      : getLocalRootDirectory();
 
     if (!hasStartFolder) {
       safeSend(sender, 'terminal:data', {
         terminalId: id,
         data: `Start Folder is empty. Opening root folder: ${cwd}\r\n`
       });
-    } else if (!isWslProfile && cwd !== requestedCwd) {
+    } else if (cwd !== requestedCwd) {
       safeSend(sender, 'terminal:data', {
         terminalId: id,
         data: `Start Folder not found: ${requestedCwd}\r\nOpening root folder: ${cwd}\r\n`
@@ -369,26 +333,20 @@ class TerminalManager {
     }
 
     const initialSize = normalizeTerminalSize(defaultCols, defaultRows);
-    let spawnArgs = getTerminalProfileArgs(profile, shell);
 
-    if (isWslProfile && hasStartFolder && !spawnArgs.includes('--cd')) {
-      spawnArgs = ['--cd', requestedCwd, ...spawnArgs];
-    }
-
-    const pty = nodePty.spawn(shell, spawnArgs, {
+    const pty = nodePty.spawn(shell, getPowerShellStartupArgs(shell), {
       name: 'xterm-256color',
       cols: initialSize.cols,
       rows: initialSize.rows,
       cwd,
-      env: getTerminalProfileEnv(profile)
+      env: getLocalTerminalEnv()
     });
 
     this.sessions.set(id, {
       type: 'local',
       status: 'connected',
       serverId: server.id || null,
-      serverName: server.name || profile?.name || 'Local Terminal',
-      profileId: profile?.id || server.profileId || null,
+      serverName: server.name || 'Local Terminal',
       pty,
       sender,
       cols: initialSize.cols,

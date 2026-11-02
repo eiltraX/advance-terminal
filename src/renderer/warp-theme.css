@@ -1,0 +1,367 @@
+/*
+  Advance Terminal v5 — Warp-inspired night skin (Phase 1)
+  VISUAL ONLY: no scripts, no timers, no terminal engine or profile changes.
+  The original styles.css is loaded first and remains untouched.
+  All overrides are dark-theme-scoped; light mode retains its original look.
+*/
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --win-bg: #0f1019;
+  --win-panel: #171823;
+  --win-panel-soft: #1c1d2b;
+  --win-border: #303144;
+  --win-border-dark: #41435b;
+  --win-text: #f0effa;
+  --win-muted: #aaaac2;
+  --win-blue: #a78bfa;
+  --win-blue-hover: #c0aeff;
+  --win-blue-light: #30284b;
+  --win-green: #65d2a4;
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.40);
+  --warp-surface: #12131e;
+  --warp-raised: #242538;
+  --warp-hover: #29273e;
+  --warp-accent: #ab92fb;
+  --warp-ring: rgba(171, 146, 251, 0.48);
+}
+
+/* Compact frame, retaining the existing grid dimensions and resize behavior. */
+:root[data-theme="dark"] .app-shell {
+  background: var(--win-bg);
+}
+
+:root[data-theme="dark"] .menu-row {
+  background: #10111c;
+  border-bottom-color: #29293b;
+  padding-inline: 12px;
+}
+
+:root[data-theme="dark"] .menu-item {
+  border-radius: 7px;
+  margin-inline: 1px;
+  color: #bfc0d6;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+:root[data-theme="dark"] .menu-item:hover,
+:root[data-theme="dark"] .menu-item.active {
+  background: #2c2642;
+  color: #e3d9ff;
+  border-color: #4b4068;
+}
+:root[data-theme="dark"] .mode-pill {
+  color: #b6b6ca;
+}
+:root[data-theme="dark"] .mode-dot {
+  background: #65d2a4;
+  box-shadow: 0 0 0 3px rgba(101, 210, 164, 0.12);
+}
+
+/* Toolbar actions maintain the existing click/green-check feedback script. */
+:root[data-theme="dark"] .toolbar,
+:root[data-theme="dark"] .toolbar-global-actions {
+  background: #141520;
+  border-color: #2a2b3b;
+}
+:root[data-theme="dark"] .toolbar {
+  border-bottom: 1px solid #2b2c3c;
+}
+:root[data-theme="dark"] .tool-button {
+  border-radius: 10px;
+  color: #d9daee;
+  transition: background-color 135ms ease, border-color 135ms ease, color 135ms ease;
+}
+:root[data-theme="dark"] .tool-button:hover {
+  background: #29283e;
+  border-color: #494263;
+}
+:root[data-theme="dark"] .tool-button:active {
+  background: #34304d;
+}
+:root[data-theme="dark"] .tool-button.active,
+:root[data-theme="dark"] .global-terminal-button.active {
+  background: #302747;
+  border-color: #6f579f;
+  color: #eee7ff;
+}
+:root[data-theme="dark"] .tool-button.active .tool-icon,
+:root[data-theme="dark"] .global-terminal-button.active .tool-icon {
+  color: #c2acff;
+}
+:root[data-theme="dark"] .toolbar-separator {
+  background: #343449;
+}
+
+/* Slight spacing around panels; do not change sidebar widths or terminal rows. */
+:root[data-theme="dark"] .workspace {
+  background: var(--win-bg);
+}
+:root[data-theme="dark"] .servers-panel,
+:root[data-theme="dark"] .content-panel {
+  background: var(--win-panel);
+  border-color: #343449;
+  border-radius: 11px;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .panel-header,
+:root[data-theme="dark"] .content-header {
+  background: #1b1c2a;
+  border-color: #313246;
+}
+:root[data-theme="dark"] .panel-header h2 {
+  color: #f1efff;
+  letter-spacing: 0.012em;
+}
+:root[data-theme="dark"] .panel-collapse-button {
+  border-radius: 7px;
+  background: #242538;
+  border-color: #414158;
+}
+:root[data-theme="dark"] .panel-collapse-button:hover {
+  background: #342b4c;
+  color: #d1beff;
+  border-color: #6f579f;
+}
+:root[data-theme="dark"] .terminal-session-label,
+:root[data-theme="dark"] .terminal-session-header .terminal-location {
+  color: #c7c4df;
+}
+:root[data-theme="dark"] .terminal-session-header .terminal-location::before {
+  color: #8c8ca7;
+}
+
+/* Sidebar selectors and search remain native controls, just restyled. */
+:root[data-theme="dark"] .left-tabbar {
+  --sidebar-main-tab-strip: #1a1b28;
+  --sidebar-main-tab-hover: #272739;
+  --sidebar-main-tab-active: #31304a;
+  --sidebar-main-tab-text: #9696b1;
+  --sidebar-main-tab-active-text: #f0eaff;
+  --sidebar-main-tab-separator: #3d3d52;
+}
+:root[data-theme="dark"] .connection-filter-row {
+  --sidebar-subtab-strip: #1a1b28;
+  --sidebar-subtab-hover: #272739;
+  --sidebar-subtab-active: #31304a;
+  --sidebar-subtab-text: #999bb3;
+  --sidebar-subtab-active-text: #eee6ff;
+  --sidebar-subtab-separator: #3d3d52;
+}
+:root[data-theme="dark"] .left-tab.active,
+:root[data-theme="dark"] .connection-filter-button.active {
+  box-shadow: inset 0 -2px #b49aff;
+}
+:root[data-theme="dark"] .search-input,
+:root[data-theme="dark"] .connection-group-filter,
+:root[data-theme="dark"] .command-category-filter,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background: #11131f;
+  border-color: #3b3c53;
+  color: #f0effa;
+  border-radius: 8px;
+}
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: #8f91ad;
+}
+:root[data-theme="dark"] .search-input:focus,
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] select:focus,
+:root[data-theme="dark"] textarea:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.24);
+}
+:root[data-theme="dark"] .server-group-header {
+  background: #211e35;
+  color: #baa5ff;
+  border-left-color: #a78bfa;
+  border-radius: 5px;
+}
+:root[data-theme="dark"] .server-group-count {
+  color: #c4bfd8;
+  background: #171927;
+  border-color: #3b3954;
+}
+:root[data-theme="dark"] .server-card,
+:root[data-theme="dark"] .command-card {
+  border-radius: 8px;
+  transition: background-color 130ms ease, border-color 130ms ease;
+}
+:root[data-theme="dark"] .server-card:hover,
+:root[data-theme="dark"] .command-card:hover {
+  background: #29283e;
+  border-color: #45415e;
+}
+:root[data-theme="dark"] .server-card.selected,
+:root[data-theme="dark"] .command-card.selected {
+  background: #302849;
+  border-color: #6f579e;
+  color: #f8f3ff;
+}
+:root[data-theme="dark"] .server-name,
+:root[data-theme="dark"] .command-name {
+  color: #eeecfa;
+}
+:root[data-theme="dark"] .server-subtitle,
+:root[data-theme="dark"] .command-value {
+  color: #a4a5bf;
+}
+:root[data-theme="dark"] .server-pin-badge,
+:root[data-theme="dark"] .command-selected-pin {
+  color: #baa5ff;
+}
+
+/* Warp-like quiet empty state; no extra renderer logic or live effects. */
+:root[data-theme="dark"] .terminal-empty,
+:root[data-theme="dark"] .terminal-host,
+:root[data-theme="dark"] .terminal-pane {
+  background: #0c0c0c;
+}
+:root[data-theme="dark"] .empty-card {
+  background: #171925;
+  border: 1px solid #39374f;
+  border-radius: 13px;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .empty-icon {
+  background: #32294b;
+  color: #c4afff;
+}
+
+/* Rounded modern tabs. Existing drag, pin, duplicate and close logic untouched. */
+:root[data-theme="dark"] .terminal-tabs {
+  --terminal-tab-strip-bg: #1b1c2a;
+  --terminal-tab-idle-shoulder: #242536;
+  --terminal-tab-hover-bg: #292a40;
+  --terminal-tab-active-bg: #0c0c0c;
+  --terminal-tab-text: #aaaac4;
+  --terminal-tab-active-text: #f4f0ff;
+  --terminal-tab-separator: #3a3b51;
+  --terminal-tab-icon-bg: #353750;
+  --terminal-tab-icon-color: #f1efff;
+  --terminal-tab-close-hover-bg: #403653;
+  --terminal-tab-close-hover-text: #f5efff;
+  --terminal-tab-focus: #b49aff;
+  --terminal-tab-drop: #b49aff;
+  --terminal-tab-drop-shadow: rgba(180, 154, 255, 0.20);
+  background: var(--terminal-tab-strip-bg);
+}
+:root[data-theme="dark"] .terminal-tab-inner {
+  border-radius: 10px 10px 0 0;
+}
+:root[data-theme="dark"] .terminal-tab.active .terminal-tab-inner {
+  box-shadow: inset 0 2px 0 #b49aff;
+}
+:root[data-theme="dark"] .terminal-tab.has-custom-color .terminal-tab-inner {
+  box-shadow: inset 0 -3px var(--custom-tab-color);
+}
+:root[data-theme="dark"] .terminal-tab.has-custom-color.active .terminal-tab-inner {
+  box-shadow: inset 0 2px 0 #b49aff, inset 0 -3px var(--custom-tab-color);
+}
+:root[data-theme="dark"] .terminal-tab-pin-icon {
+  color: #d4bcff;
+}
+:root[data-theme="dark"] .terminal-tab-picker-menu,
+:root[data-theme="dark"] .terminal-tab-context-menu,
+:root[data-theme="dark"] .sidebar-context-menu {
+  background: #212232;
+  color: #efedfa;
+  border: 1px solid #4c4567;
+  border-radius: 11px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.45);
+  animation: warp-menu-appear 135ms ease-out both;
+}
+:root[data-theme="dark"] .terminal-tab-context-item:hover:not(:disabled),
+:root[data-theme="dark"] .terminal-tab-context-item:focus-visible,
+:root[data-theme="dark"] .terminal-tab-picker-item:hover,
+:root[data-theme="dark"] .sidebar-context-menu-item:hover {
+  background: #39304e;
+  color: #f1eaff;
+}
+:root[data-theme="dark"] .terminal-tab-context-color-row button,
+:root[data-theme="dark"] .terminal-tab-rename-actions button {
+  border-radius: 7px;
+}
+:root[data-theme="dark"] .terminal-tab-rename-dialog,
+:root[data-theme="dark"] .modal-box,
+:root[data-theme="dark"] .toast {
+  background: #202132;
+  border-color: #504964;
+  color: #f0eff9;
+  border-radius: 12px;
+}
+
+/* Buttons and secondary pages share one visual language. */
+:root[data-theme="dark"] .settings-tab.active,
+:root[data-theme="dark"] .page-tab.active {
+  background: #32294b;
+  color: #ede5ff;
+  border-color: #7961ad;
+}
+:root[data-theme="dark"] .connect-card-button,
+:root[data-theme="dark"] .command-run-button,
+:root[data-theme="dark"] .primary-button,
+:root[data-theme="dark"] .go-live-button {
+  background: #7255bd;
+  color: #fff;
+  border-color: #8c6ad6;
+  border-radius: 7px;
+}
+:root[data-theme="dark"] .connect-card-button:hover,
+:root[data-theme="dark"] .command-run-button:hover,
+:root[data-theme="dark"] .primary-button:hover,
+:root[data-theme="dark"] .go-live-button:hover {
+  background: #8a6dd1;
+}
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .command-edit-button,
+:root[data-theme="dark"] .add-manage-button {
+  background: #252638;
+  border-color: #49465f;
+  color: #e8e6f5;
+  border-radius: 7px;
+}
+:root[data-theme="dark"] .status-pill,
+:root[data-theme="dark"] .panel-badge {
+  background: #222436;
+  border-color: #3c3f55;
+}
+:root[data-theme="dark"] .statusbar {
+  background: #12131e;
+  border-top-color: #303145;
+  color: #a5a5c0;
+}
+:root[data-theme="dark"] .statusbar-runtime-item strong {
+  color: #deddf0;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #171823;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #48475e;
+  border-color: #171823;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #68627d;
+}
+
+@keyframes warp-menu-appear {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] .terminal-tab-picker-menu,
+  :root[data-theme="dark"] .terminal-tab-context-menu,
+  :root[data-theme="dark"] .sidebar-context-menu {
+    animation: none;
+  }
+  :root[data-theme="dark"] .menu-item,
+  :root[data-theme="dark"] .tool-button,
+  :root[data-theme="dark"] .server-card,
+  :root[data-theme="dark"] .command-card {
+    transition: none;
+  }
+}

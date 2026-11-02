@@ -237,121 +237,6 @@ function createSettingsAutoBackup(reason = 'auto', options = {}) {
 }
 
 
-
-function createDefaultTerminalProfiles() {
-  return [
-    {
-      id: 'profile-powershell',
-      name: 'PowerShell',
-      kind: 'powershell',
-      executable: 'powershell.exe',
-      args: [],
-      workingDirectory: '',
-      environment: {},
-      icon: 'PS',
-      color: '#58a6ff'
-    },
-    {
-      id: 'profile-cmd',
-      name: 'Command Prompt',
-      kind: 'cmd',
-      executable: 'cmd.exe',
-      args: [],
-      workingDirectory: '',
-      environment: {},
-      icon: 'CMD',
-      color: '#8b949e'
-    },
-    {
-      id: 'profile-git-bash',
-      name: 'Git Bash',
-      kind: 'git-bash',
-      executable: 'C:\\Program Files\\Git\\bin\\bash.exe',
-      args: ['--login', '-i'],
-      workingDirectory: '',
-      environment: {},
-      icon: 'GIT',
-      color: '#f78166'
-    },
-    {
-      id: 'profile-wsl',
-      name: 'WSL',
-      kind: 'wsl',
-      executable: 'wsl.exe',
-      args: [],
-      workingDirectory: '',
-      environment: {},
-      icon: 'WSL',
-      color: '#3fb950'
-    }
-  ];
-}
-
-function normalizeTerminalProfileEnvironment(value) {
-  const source = value && typeof value === 'object' && !Array.isArray(value)
-    ? value
-    : {};
-  const normalized = {};
-
-  Object.entries(source).slice(0, 80).forEach(([rawKey, rawValue]) => {
-    const key = String(rawKey || '').trim();
-
-    if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) {
-      return;
-    }
-
-    normalized[key] = String(rawValue ?? '').slice(0, 8192);
-  });
-
-  return normalized;
-}
-
-function normalizeTerminalProfile(profile = {}) {
-  const allowedKinds = new Set(['powershell', 'cmd', 'git-bash', 'wsl', 'custom']);
-  const kind = allowedKinds.has(String(profile.kind || '').toLowerCase())
-    ? String(profile.kind).toLowerCase()
-    : 'custom';
-  const args = Array.isArray(profile.args)
-    ? profile.args.map((value) => String(value ?? '').slice(0, 2048)).slice(0, 40)
-    : [];
-  const icon = Array.from(String(profile.icon || '').trim()).slice(0, 4).join('');
-  const color = /^#[0-9a-f]{6}$/i.test(String(profile.color || '').trim())
-    ? String(profile.color).trim().toLowerCase()
-    : '';
-
-  return {
-    id: String(profile.id || crypto.randomUUID()),
-    name: String(profile.name || 'Terminal Profile').trim().slice(0, 80) || 'Terminal Profile',
-    kind,
-    executable: String(profile.executable || '').trim().slice(0, 2048),
-    args,
-    workingDirectory: String(profile.workingDirectory || '').trim().slice(0, 4096),
-    environment: normalizeTerminalProfileEnvironment(profile.environment),
-    icon: icon || 'TERM',
-    color
-  };
-}
-
-function normalizeTerminalProfiles(value) {
-  const defaults = createDefaultTerminalProfiles();
-  const source = Array.isArray(value) && value.length ? value : defaults;
-  const profiles = [];
-  const ids = new Set();
-
-  source.slice(0, 100).forEach((profile) => {
-    const normalized = normalizeTerminalProfile(profile);
-
-    if (ids.has(normalized.id)) {
-      normalized.id = crypto.randomUUID();
-    }
-
-    ids.add(normalized.id);
-    profiles.push(normalized);
-  });
-
-  return profiles.length ? profiles : defaults.map(normalizeTerminalProfile);
-}
-
 function createDefaultTerminalActions() {
   return [
     {
@@ -422,329 +307,30 @@ function createDefaultTerminalActions() {
 }
 
 function normalizeTerminalAction(action) {
-  const source = action && typeof action === 'object' && !Array.isArray(action) ? action : {};
   const allowedActions = new Set([
     'clear',
     'copyAll',
     'copySelection',
     'paste',
-    'ctrlA',
     'ctrlC',
-    'ctrlD',
-    'ctrlE',
-    'ctrlK',
     'ctrlL',
-    'ctrlR',
-    'ctrlU',
-    'ctrlW',
-    'ctrlZ',
-    'enter',
-    'tab',
-    'escape',
-    'arrowUp',
-    'arrowDown',
-    'arrowLeft',
-    'arrowRight',
+    'ctrlD',
     'closeSession',
-    'sendText',
-    'typeText'
+    'sendText'
   ]);
-  const allowedItemTypes = new Set(['action', 'separator']);
-  const allowedVisibility = new Set(['all', 'local', 'ssh', 'admin', 'profile']);
-  const itemType = allowedItemTypes.has(String(source.itemType || ''))
-    ? String(source.itemType)
-    : 'action';
-  const selectedAction = allowedActions.has(String(source.action || ''))
-    ? String(source.action)
+
+  const selectedAction = allowedActions.has(String(action.action || ''))
+    ? String(action.action)
     : 'sendText';
-  const customIcon = Array.from(String(source.customIcon || '').trim()).slice(0, 4).join('');
-  const color = /^#[0-9a-f]{6}$/i.test(String(source.color || '').trim())
-    ? String(source.color).trim().toLowerCase()
-    : '';
-  const visibility = allowedVisibility.has(String(source.visibility || ''))
-    ? String(source.visibility)
-    : 'all';
 
   return {
-    id: String(source.id || crypto.randomUUID()),
-    itemType,
-    name: String(source.name || (itemType === 'separator' ? 'Separator' : 'Terminal Action')).trim().slice(0, 100)
-      || (itemType === 'separator' ? 'Separator' : 'Terminal Action'),
+    id: String(action.id || crypto.randomUUID()),
+    name: String(action.name || 'Terminal Action'),
     action: selectedAction,
-    icon: String(source.icon || 'terminal'),
-    customIcon,
-    color,
-    text: String(source.text || ''),
-    enabled: source.enabled !== false,
-    group: itemType === 'action' ? String(source.group || '').trim().replace(/\s+/g, ' ').slice(0, 50) : '',
-    dropdown: itemType === 'action' ? String(source.dropdown || '').trim().replace(/\s+/g, ' ').slice(0, 50) : '',
-    shortcut: itemType === 'action' ? String(source.shortcut || '').trim().slice(0, 80) : '',
-    visibility,
-    profileId: visibility === 'profile' ? String(source.profileId || '').trim().slice(0, 240) : ''
+    icon: String(action.icon || 'terminal'),
+    text: String(action.text || ''),
+    enabled: action.enabled !== false
   };
-}
-
-
-function normalizeWorkspaceWindowState(value = {}) {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const numberOrNull = (input) => {
-    const valueNumber = Number(input);
-    return Number.isFinite(valueNumber) ? Math.round(valueNumber) : null;
-  };
-
-  const width = numberOrNull(source.width);
-  const height = numberOrNull(source.height);
-  const x = numberOrNull(source.x);
-  const y = numberOrNull(source.y);
-
-  return {
-    x,
-    y,
-    width: width === null ? null : Math.min(10000, Math.max(420, width)),
-    height: height === null ? null : Math.min(10000, Math.max(360, height)),
-    isMaximized: source.isMaximized === true
-  };
-}
-
-function normalizeWorkspaceSession(value = {}) {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const kind = source.kind === 'profile' ? 'profile' : 'connection';
-  const serverId = String(source.serverId || '').trim().slice(0, 240);
-  const profileId = String(source.profileId || '').trim().slice(0, 240);
-
-  if (kind === 'profile' && !profileId) {
-    return null;
-  }
-
-  if (kind === 'connection' && !serverId) {
-    return null;
-  }
-
-  return {
-    kind,
-    serverId: kind === 'connection' ? serverId : '',
-    profileId: kind === 'profile' ? profileId : '',
-    type: source.type === 'remote' ? 'remote' : 'local',
-    label: String(source.label || '').trim().slice(0, 160),
-    workingDirectory: String(source.workingDirectory || '').trim().slice(0, 4096)
-  };
-}
-
-
-function normalizeWorkspaceSplitNode(value, sessionCount, usedSessionIndexes, depth = 0) {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-
-  if (depth > 8 || sessionCount < 1) {
-    return null;
-  }
-
-  if (source.type === 'split') {
-    const first = normalizeWorkspaceSplitNode(source.first, sessionCount, usedSessionIndexes, depth + 1);
-    const second = normalizeWorkspaceSplitNode(source.second, sessionCount, usedSessionIndexes, depth + 1);
-
-    if (!first) return second;
-    if (!second) return first;
-
-    const rawRatio = Number(source.ratio);
-    const ratio = Number.isFinite(rawRatio)
-      ? Math.min(0.85, Math.max(0.15, rawRatio))
-      : 0.5;
-
-    return {
-      type: 'split',
-      direction: source.direction === 'column' ? 'column' : 'row',
-      ratio: Math.round(ratio * 1000) / 1000,
-      first,
-      second
-    };
-  }
-
-  const sessionIndex = Number(source.sessionIndex);
-
-  if (!Number.isInteger(sessionIndex) || sessionIndex < 0 || sessionIndex >= sessionCount) {
-    return null;
-  }
-
-  if (usedSessionIndexes.has(sessionIndex)) {
-    return null;
-  }
-
-  usedSessionIndexes.add(sessionIndex);
-  return {
-    type: 'leaf',
-    sessionIndex
-  };
-}
-
-function workspaceSplitNodeSessionIndexes(node, result = []) {
-  if (!node) return result;
-
-  if (node.type === 'leaf') {
-    result.push(node.sessionIndex);
-    return result;
-  }
-
-  workspaceSplitNodeSessionIndexes(node.first, result);
-  workspaceSplitNodeSessionIndexes(node.second, result);
-  return result;
-}
-
-function normalizeWorkspaceSplitGroups(value, sessionCount) {
-  const groups = [];
-  const usedSessionIndexes = new Set();
-
-  (Array.isArray(value) ? value : []).slice(0, 32).forEach((groupValue) => {
-    const source = groupValue && typeof groupValue === 'object' && !Array.isArray(groupValue)
-      ? groupValue
-      : {};
-    const root = normalizeWorkspaceSplitNode(source.root, sessionCount, usedSessionIndexes);
-
-    if (!root) {
-      return;
-    }
-
-    const indexes = workspaceSplitNodeSessionIndexes(root, []);
-    const requestedActive = Number(source.activeSessionIndex);
-    const activeSessionIndex = indexes.includes(requestedActive)
-      ? requestedActive
-      : indexes[0];
-
-    const title = String(source.title || '')
-      .replace(/[\r\n\t]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 80);
-    const colorValue = String(source.color || '').trim();
-    const color = /^#[0-9a-fA-F]{6}$/.test(colorValue) ? colorValue.toLowerCase() : '';
-
-    groups.push({
-      root,
-      activeSessionIndex,
-      title,
-      color,
-      pinned: source.pinned === true
-    });
-  });
-
-  for (let sessionIndex = 0; sessionIndex < sessionCount; sessionIndex += 1) {
-    if (usedSessionIndexes.has(sessionIndex)) {
-      continue;
-    }
-
-    usedSessionIndexes.add(sessionIndex);
-    groups.push({
-      root: { type: 'leaf', sessionIndex },
-      activeSessionIndex: sessionIndex,
-      title: '',
-      color: '',
-      pinned: false
-    });
-  }
-
-  return groups;
-}
-
-function normalizeWorkspace(value = {}) {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const sessions = (Array.isArray(source.sessions) ? source.sessions : [])
-    .slice(0, 32)
-    .map(normalizeWorkspaceSession)
-    .filter(Boolean);
-  const activeSessionIndex = sessions.length
-    ? clampInteger(source.activeSessionIndex, 0, 0, sessions.length - 1)
-    : -1;
-  const splitGroups = normalizeWorkspaceSplitGroups(source.splitGroups, sessions.length);
-  const createdAt = Number.isFinite(Date.parse(String(source.createdAt || '')))
-    ? new Date(source.createdAt).toISOString()
-    : new Date().toISOString();
-  const updatedAt = Number.isFinite(Date.parse(String(source.updatedAt || '')))
-    ? new Date(source.updatedAt).toISOString()
-    : createdAt;
-
-  return {
-    id: String(source.id || crypto.randomUUID()).trim().slice(0, 240) || crypto.randomUUID(),
-    name: String(source.name || 'Workspace').trim().replace(/\s+/g, ' ').slice(0, 100) || 'Workspace',
-    sessions,
-    activeSessionIndex,
-    splitGroups,
-    includeToolbar: source.includeToolbar !== false,
-    restoreWindowState: source.restoreWindowState !== false,
-    toolbarActions: Array.isArray(source.toolbarActions)
-      ? source.toolbarActions.slice(0, 80).map(normalizeTerminalAction)
-      : [],
-    windowState: normalizeWorkspaceWindowState(source.windowState),
-    createdAt,
-    updatedAt
-  };
-}
-
-function normalizeWorkspaces(value) {
-  const workspaces = [];
-  const ids = new Set();
-
-  (Array.isArray(value) ? value : []).slice(0, 50).forEach((workspace) => {
-    const normalized = normalizeWorkspace(workspace);
-
-    if (ids.has(normalized.id)) {
-      normalized.id = crypto.randomUUID();
-    }
-
-    ids.add(normalized.id);
-    workspaces.push(normalized);
-  });
-
-  return workspaces;
-}
-
-
-function normalizePinnedTerminalTab(value = {}) {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const sessions = (Array.isArray(source.sessions) ? source.sessions : [])
-    .slice(0, 4)
-    .map(normalizeWorkspaceSession)
-    .filter(Boolean);
-
-  if (!sessions.length) {
-    return null;
-  }
-
-  const usedSessionIndexes = new Set();
-  let root = normalizeWorkspaceSplitNode(source.root, sessions.length, usedSessionIndexes);
-
-  if (!root) {
-    root = { type: 'leaf', sessionIndex: 0 };
-    usedSessionIndexes.add(0);
-  }
-
-  const indexes = workspaceSplitNodeSessionIndexes(root, []);
-  const requestedActive = Number(source.activeSessionIndex);
-  const activeSessionIndex = indexes.includes(requestedActive)
-    ? requestedActive
-    : indexes[0];
-
-  const title = String(source.title || '')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-  const colorValue = String(source.color || '').trim();
-  const color = /^#[0-9a-fA-F]{6}$/.test(colorValue) ? colorValue.toLowerCase() : '';
-
-  return {
-    sessions,
-    root,
-    activeSessionIndex,
-    title,
-    color,
-    pinned: true
-  };
-}
-
-function normalizePinnedTerminalTabs(value) {
-  return (Array.isArray(value) ? value : [])
-    .slice(0, 12)
-    .map(normalizePinnedTerminalTab)
-    .filter(Boolean);
 }
 
 
@@ -780,12 +366,6 @@ function normalizeActivityFeedSettings(value = {}) {
   };
 }
 
-function normalizeTerminalSafetySettings(value = {}) {
-  return {
-    lockActionsWhileCommandRunning: value.lockActionsWhileCommandRunning !== false
-  };
-}
-
 function normalizeAiSettings(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value
@@ -810,7 +390,6 @@ function normalizeUi(ui = {}) {
     theme: ui.theme === 'dark' ? 'dark' : 'light',
     notificationPosition: normalizeNotificationPosition(ui.notificationPosition),
     pasteProtection: normalizePasteProtection(ui.pasteProtection || {}),
-    terminalSafety: normalizeTerminalSafetySettings(ui.terminalSafety || {}),
     activityFeed: normalizeActivityFeedSettings(ui.activityFeed || {})
   };
 }
@@ -1078,7 +657,6 @@ function createDefaultSettings() {
         description: 'Local Terminal',
         group: 'Local',
         shell: '',
-        profileId: 'profile-powershell',
         workingDirectory: ''
       }
     ],
@@ -1108,12 +686,7 @@ function createDefaultSettings() {
         command: 'php -v'
       }
     ],
-    terminalProfiles: createDefaultTerminalProfiles(),
-    defaultTerminalProfileId: 'profile-powershell',
     terminalActions: createDefaultTerminalActions(),
-    workspaces: [],
-    startupWorkspaceId: '',
-    pinnedTerminalTabs: [],
     auditLog: [],
     ui: {
       theme: 'light',
@@ -1122,9 +695,6 @@ function createDefaultSettings() {
         confirmMultiline: true,
         rightClickAutoEnter: false,
         lockSshToStartFolder: true
-      },
-      terminalSafety: {
-        lockActionsWhileCommandRunning: true
       },
       activityFeed: {
         terminalOutput: 'off'
@@ -1202,7 +772,6 @@ function normalizeServer(server) {
       description: String(server.description || 'Local Terminal'),
       group: normalizeConnectionGroup(server.group, 'local'),
       shell: String(server.shell || ''),
-      profileId: String(server.profileId || ''),
       workingDirectory: String(server.workingDirectory || '')
     };
   }
@@ -1353,14 +922,9 @@ function readSettings() {
       commands: Array.isArray(data.commands)
         ? data.commands.map(normalizeCommand).filter((command) => command.command.trim())
         : defaults.commands,
-      terminalProfiles: normalizeTerminalProfiles(data.terminalProfiles || defaults.terminalProfiles),
-      defaultTerminalProfileId: String(data.defaultTerminalProfileId || defaults.defaultTerminalProfileId || ''),
       terminalActions: Array.isArray(data.terminalActions) && data.terminalActions.length
         ? data.terminalActions.map(normalizeTerminalAction)
         : defaults.terminalActions,
-      workspaces: normalizeWorkspaces(data.workspaces || defaults.workspaces),
-      startupWorkspaceId: String(data.startupWorkspaceId || ''),
-      pinnedTerminalTabs: normalizePinnedTerminalTabs(data.pinnedTerminalTabs || defaults.pinnedTerminalTabs),
       auditLog: Array.isArray(data.auditLog) ? data.auditLog.slice(-500) : [],
       ui: normalizeUi({
         ...defaults.ui,
@@ -1375,24 +939,6 @@ function readSettings() {
     if (!settings.servers.find((server) => server.id === settings.selectedServerId)) {
       settings.selectedServerId = settings.servers[0]?.id || 'local-terminal';
     }
-
-    if (!settings.terminalProfiles.find((profile) => profile.id === settings.defaultTerminalProfileId)) {
-      settings.defaultTerminalProfileId = settings.terminalProfiles[0]?.id || '';
-    }
-
-    if (!settings.workspaces.find((workspace) => workspace.id === settings.startupWorkspaceId)) {
-      settings.startupWorkspaceId = '';
-    }
-
-    settings.servers = settings.servers.map((server) => {
-      if (server.type !== 'local' || !server.profileId) {
-        return server;
-      }
-
-      return settings.terminalProfiles.some((profile) => profile.id === server.profileId)
-        ? server
-        : { ...server, profileId: '' };
-    });
 
     if (settingsContainInlineSecrets(data)) {
       writeSettingsFileAtomic(getSettingsFilePath(), settings);
@@ -1427,28 +973,11 @@ function saveSettings(settings) {
     commands: Array.isArray(settings.commands)
       ? settings.commands.map(normalizeCommand).filter((command) => command.command.trim())
       : (Array.isArray(current.commands) ? current.commands.map(normalizeCommand) : createDefaultSettings().commands),
-    terminalProfiles: normalizeTerminalProfiles(
-      Array.isArray(settings.terminalProfiles) && settings.terminalProfiles.length
-        ? settings.terminalProfiles
-        : current.terminalProfiles
-    ),
-    defaultTerminalProfileId: String(settings.defaultTerminalProfileId || current.defaultTerminalProfileId || ''),
     terminalActions: Array.isArray(settings.terminalActions) && settings.terminalActions.length
       ? settings.terminalActions.map(normalizeTerminalAction)
       : (Array.isArray(current.terminalActions) && current.terminalActions.length
         ? current.terminalActions.map(normalizeTerminalAction)
         : createDefaultTerminalActions()),
-    workspaces: Array.isArray(settings.workspaces)
-      ? normalizeWorkspaces(settings.workspaces)
-      : normalizeWorkspaces(current.workspaces),
-    startupWorkspaceId: String(
-      Object.prototype.hasOwnProperty.call(settings, 'startupWorkspaceId')
-        ? (settings.startupWorkspaceId || '')
-        : (current.startupWorkspaceId || '')
-    ),
-    pinnedTerminalTabs: Object.prototype.hasOwnProperty.call(settings, 'pinnedTerminalTabs')
-      ? normalizePinnedTerminalTabs(settings.pinnedTerminalTabs)
-      : normalizePinnedTerminalTabs(current.pinnedTerminalTabs),
     auditLog: Array.isArray(current.auditLog) ? current.auditLog.slice(-500) : [],
     ui: normalizeUi({
       ...(current.ui || {}),
@@ -1463,24 +992,6 @@ function saveSettings(settings) {
   if (!next.servers.find((server) => server.id === next.selectedServerId)) {
     next.selectedServerId = next.servers[0]?.id || '';
   }
-
-  if (!next.terminalProfiles.find((profile) => profile.id === next.defaultTerminalProfileId)) {
-    next.defaultTerminalProfileId = next.terminalProfiles[0]?.id || '';
-  }
-
-  if (!next.workspaces.find((workspace) => workspace.id === next.startupWorkspaceId)) {
-    next.startupWorkspaceId = '';
-  }
-
-  next.servers = next.servers.map((server) => {
-    if (server.type !== 'local' || !server.profileId) {
-      return server;
-    }
-
-    return next.terminalProfiles.some((profile) => profile.id === server.profileId)
-      ? server
-      : { ...server, profileId: '' };
-  });
 
   writeSettingsFileAtomic(getSettingsFilePath(), next);
   createSettingsAutoBackup('after-save');

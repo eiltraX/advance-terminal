@@ -1,0 +1,63 @@
+/* Advance Terminal V7 — Design System, Stage 1 (2026-10-12)
+   Shared visual tokens and scoped chrome/control consistency.
+   Deliberately DO NOT modify terminal/xterm sizing, session cards, composer,
+   ultrathin scrollbar styling, app workspace geometry, or color palettes. */
+:root {
+  --v7ds-font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --v7ds-font-control: 12px;
+  --v7ds-font-small: 11px;
+  --v7ds-font-caption: 10px;
+  --v7ds-radius-control: 6px;
+  --v7ds-radius-popup: 10px;
+  --v7ds-space-1: 4px;
+  --v7ds-space-2: 8px;
+  --v7ds-space-3: 12px;
+  --v7ds-space-4: 16px;
+  --v7ds-icon-size: 16px;
+  --v7ds-motion-fast: 120ms;
+  --v7ds-focus-ring: rgba(31, 106, 174, .68);
+}
+:root[data-theme="dark"] {
+  --v7ds-focus-ring: rgba(91, 157, 210, .72);
+}
+
+/* Consistent corners, hover timing and legible text across existing V7
+   command surfaces. No height, width or layout changes. */
+:root :is(.v7-header-icon, .v7-flyout-action, .v7-flyout-close,
+  .v7-header-popup-item, .v7-new-session-item, .v7-result-item) {
+  border-radius: var(--v7ds-radius-control);
+  transition: background-color var(--v7ds-motion-fast) ease,
+              color var(--v7ds-motion-fast) ease;
+}
+:root :is(.v7-header-popup-item, .v7-new-session-item, .v7-result-item) {
+  font-family: var(--v7ds-font-ui);
+  font-size: var(--v7ds-font-control);
+}
+:root :is(.v7-quick-search, .v7-session-search) {
+  border-radius: var(--v7ds-radius-control);
+}
+:root :is(.v7-header-popup, .v7-global-results, .v7-new-session-menu) {
+  border-radius: var(--v7ds-radius-popup);
+}
+
+/* Keep the visible keyboard focus indication fine, not the legacy thick
+   2px bright-cyan ring; only change controls explicitly in Stage 1. */
+:root :is(.v7-header-icon, .v7-flyout-action, .v7-flyout-close,
+  .v7-header-popup-item, .v7-new-session-item, .v7-result-item):focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: 1px;
+}
+:root .v7-quick-search:focus-within {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: 0;
+}
+:root .v7-session-search:focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root :is(.v7-header-icon, .v7-flyout-action, .v7-flyout-close,
+    .v7-header-popup-item, .v7-new-session-item, .v7-result-item) {
+    transition: none;
+  }
+}

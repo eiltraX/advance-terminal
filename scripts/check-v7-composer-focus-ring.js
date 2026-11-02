@@ -1,0 +1,24 @@
+"use strict";
+// Read-only, focused check for the command composer border refactor.
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const css = fs.readFileSync(path.join(root, 'src/renderer/v7-command-composer.css'), 'utf8');
+const globalCss = fs.readFileSync(path.join(root, 'src/renderer/styles.css'), 'utf8');
+const html = fs.readFileSync(path.join(root, 'src/renderer/index.html'), 'utf8');
+const oldFocusBlock = css.match(/\.v7-composer-icon:focus-visible,[\s\S]*?\}/)?.[0] || '';
+assert(oldFocusBlock.includes('outline: 2px solid #4ca4dc'), 'Do not weaken other button keyboard focus');
+assert(!oldFocusBlock.includes('textarea:focus-visible'), 'Composer textarea still inherits thick 2px outline');
+const selector = '.v7-command-composer .v7-composer-edit-row textarea:is(:focus, :focus-visible)';
+const start = css.indexOf(selector);
+assert(start !== -1, 'Missing thin composer focus styling');
+const block = css.slice(start + selector.length).match(/^\s*\{([^}]*)\}/)?.[1];
+assert(block, 'Cannot find thin focus rule block');
+assert(/border-color:\s*#426575\s*;/.test(block), 'Expected muted focus border');
+assert(/box-shadow:\s*0\s+0\s+0\s+0\.5px\s+rgba\(95,\s*151,\s*173,\s*0\.30\)\s*;/.test(block), 'Expected only 0.5px outer focus glow');
+assert(/outline:\s*none\s*;/.test(block), 'Old outline must be suppressed for textarea');
+assert(globalCss.includes('textarea:focus') && globalCss.includes('box-shadow'), 'Shared focus rule expected');
+assert(html.indexOf('href="./v7-command-composer.css"') > html.indexOf('href="./styles.css"'), 'V7 focus override must load after global CSS');
+assert(css.includes('height: 40px;') && css.includes('resize: none;'), 'Composer sizing must remain unchanged');
+console.log('PASS: V7 composer uses subtle 1px border + 0.5px focus highlight, with button accessibility focus preserved');

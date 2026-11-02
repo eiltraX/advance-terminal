@@ -1,0 +1,290 @@
+/* V7 menu and Settings usability polish — presentation only.
+   Keep all menu buttons and existing terminal action handlers mounted. */
+
+/* Compact application menu; explicit labels for every terminal action. */
+.v7-shell-menu {
+  box-sizing: border-box;
+  width: min(364px, calc(100vw - 24px));
+  padding: 12px;
+  max-height: min(650px, calc(100vh - 56px));
+  border-radius: 10px;
+  border-color: var(--v7-border);
+}
+.v7-shell-menu .v7-menu-caption {
+  margin: 0 0 6px;
+  padding: 4px 2px;
+  font-size: 10px;
+  color: var(--v7-muted);
+  letter-spacing: .065em;
+}
+.v7-shell-menu .v7-sidebar-nav {
+  gap: 4px;
+  margin: 0 0 9px;
+  padding: 0 0 10px;
+}
+.v7-shell-menu .v7-sidebar-nav-action {
+  min-height: 32px;
+  padding: 6px 4px;
+  text-align: center;
+}
+.v7-shell-menu .menu-row {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0 0 5px;
+  margin: 0;
+}
+.v7-shell-menu .menu-left {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+}
+.v7-shell-menu .menu-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 1px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.v7-shell-menu .toolbar {
+  display: block;
+  width: 100%;
+  padding: 11px 0 0;
+  margin-top: 7px;
+  border-top: 1px solid var(--v7-border);
+  background: transparent;
+  min-height: 0;
+}
+.v7-shell-menu .toolbar-panel { display: none; }
+.v7-shell-menu .toolbar-panel.active {
+  display: flex;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+.v7-shell-menu .toolbar-panel .toolbar-separator { display: none; }
+.v7-shell-menu .dynamic-toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  flex: 1 0 100%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+.v7-shell-menu .tool-button,
+.v7-shell-menu .dynamic-toolbar-actions .tool-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  flex: 1 1 calc(50% - 4px);
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  min-height: 36px;
+  height: auto;
+  padding: 7px 9px;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--v7-fg);
+}
+.v7-shell-menu .dynamic-toolbar-actions .tool-button { width: 100%; }
+.v7-shell-menu .tool-button > span:not(.tool-icon),
+.v7-shell-menu .dynamic-toolbar-actions .tool-button > span:not(.tool-icon) {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  line-height: 1.3;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.v7-shell-menu .tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+.v7-shell-menu .tool-icon svg { width: 18px; height: 18px; }
+.v7-shell-menu .tool-button:hover:not(:disabled),
+.v7-shell-menu .tool-button:focus-visible {
+  background: var(--v7-control);
+  border-color: var(--v7-border);
+}
+.v7-shell-menu .tool-button:focus-visible,
+.v7-shell-menu .menu-item:focus-visible {
+  outline: 2px solid #43aed6;
+  outline-offset: -2px;
+}
+.v7-shell-menu #tool-new-server {
+  flex: 1 1 100%;
+  width: 100%;
+  background: var(--v7-control);
+}
+.v7-shell-menu .toolbar-global-actions {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  margin-top: 9px;
+  padding: 9px 0 0;
+  border-top: 1px solid var(--v7-border);
+  justify-content: stretch;
+}
+.v7-shell-menu #tool-open-terminal {
+  width: 100%;
+  flex: 1 1 100%;
+}
+
+/* Settings: compact workspace-like styling, no changes to stored preferences. */
+#settings-view { background: var(--v7-bg); color: var(--v7-fg); }
+#settings-view > .content-header {
+  box-sizing: border-box;
+  min-height: 74px;
+  height: auto;
+  padding: 12px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  background: var(--v7-panel);
+  border-bottom: 1px solid var(--v7-border);
+}
+#settings-view > .content-header h1 { font-size: 18px; line-height: 1.35; }
+#settings-view > .content-header .eyebrow { color: var(--v7-muted); font-size: 10px; }
+#settings-view > .content-header .header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+#settings-view > .content-header .header-actions > button {
+  min-height: 32px;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 5px 10px;
+}
+#settings-view .settings-layout {
+  grid-template-columns: 190px minmax(0, 1fr);
+  min-width: 0;
+  background: var(--v7-bg);
+}
+#settings-view .settings-nav {
+  min-width: 0;
+  padding: 14px 9px;
+  background: var(--v7-panel);
+  border-right: 1px solid var(--v7-border);
+}
+#settings-view .settings-tab {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  height: auto;
+  padding: 8px 11px;
+  margin: 1px 0 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--v7-muted);
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+#settings-view .settings-tab:hover { background: var(--v7-control); color: var(--v7-fg); }
+#settings-view .settings-tab.active {
+  background: var(--v7-control);
+  border-color: var(--v7-border);
+  color: var(--v7-fg);
+  font-weight: 600;
+  box-shadow: none;
+}
+#settings-view .settings-tab:focus-visible { outline: 2px solid #43aed6; outline-offset: -2px; }
+#settings-view .settings-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px clamp(15px, 2.2vw, 32px);
+  background: var(--v7-bg);
+}
+#settings-view .settings-section.active { max-width: 1080px; }
+#settings-view .section-title { margin-bottom: 14px; }
+#settings-view .section-title h2 { font-size: 16px; }
+#settings-view .section-title .eyebrow { color: var(--v7-muted); }
+#settings-view .windows-group {
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid var(--v7-border);
+  border-radius: 10px;
+  background: var(--v7-panel);
+  color: var(--v7-fg);
+}
+#settings-view .section-help { color: var(--v7-muted); line-height: 1.55; }
+#settings-view .report-option-row {
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--v7-fg);
+}
+#settings-view .report-option-row + .report-option-row {
+  border-top: 1px solid var(--v7-border);
+  border-radius: 0;
+}
+#settings-view .report-option-row:hover { background: var(--v7-control); }
+#settings-view .report-option-row strong { color: var(--v7-fg); }
+#settings-view .report-option-row small { color: var(--v7-muted); }
+#settings-view .inline-note { color: var(--v7-muted); line-height: 1.5; }
+#settings-view .terminal-actions-manager { gap: 12px; }
+#settings-view .terminal-actions-list-panel,
+#settings-view .terminal-action-editor { min-width: 0; }
+#settings-view input:focus-visible,
+#settings-view select:focus-visible,
+#settings-view textarea:focus-visible { outline-color: #43aed6; }
+
+@media (max-width: 760px) {
+  #settings-view .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  #settings-view .settings-nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 7px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--v7-border);
+  }
+  #settings-view .settings-tab { min-width: max-content; width: auto; margin: 0; padding: 8px 12px; }
+  #settings-view .settings-content { padding: 14px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v7-shell-menu .menu-item,
+  .v7-shell-menu .tool-button,
+  #settings-view .settings-tab { transition: none !important; }
+}

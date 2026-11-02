@@ -24,21 +24,7 @@
     bolt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7z"/></svg>',
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
     wrench: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.5 2.5-2-2z"/></svg>',
-    folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7v12"/></svg>',
-    code: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/></svg>',
-    database: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
-    server: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M6.1 8a7 7 0 0 1 11.4-2L20 8M4 16l2.5 2a7 7 0 0 0 11.4-2"/></svg>',
-    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>',
-    upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M5 20h14"/></svg>',
-    download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M8 12l4 4 4-4"/><path d="M5 20h14"/></svg>',
-    package: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4-8 4-8-4z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4z"/><path d="M12 11v10"/></svg>',
-    star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
-    rocket: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4c3-2 5-1 6 0 1 1 2 3 0 6l-5 5-6-6z"/><path d="m9 9-4 1-2 3 5 1M15 15l-1 5-3 2-1-5"/><circle cx="15.5" cy="8.5" r="1.5"/></svg>',
-    gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.5 1A7 7 0 0 0 14.7 6L14.3 3h-4.6L9.3 6a7 7 0 0 0-1.7 1.1l-2.5-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.5-1A7 7 0 0 0 9.3 18l.4 3h4.6l.4-3a7 7 0 0 0 1.7-1.1l2.5 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"/></svg>',
-    lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
-    unlock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></svg>',
-    custom: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 16 10 8l3 8M8 13h4M16 9h2M17 8v2"/></svg>'
+    folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7v12"/></svg>'
   });
 
   const TERMINAL_ACTION_ICON_LABELS = Object.freeze({
@@ -54,21 +40,7 @@
     bolt: 'Run',
     play: 'Play',
     wrench: 'Tool',
-    folder: 'Folder',
-    code: 'Code',
-    database: 'Database',
-    server: 'Server',
-    refresh: 'Refresh',
-    search: 'Search',
-    upload: 'Upload',
-    download: 'Download',
-    package: 'Package',
-    star: 'Star',
-    rocket: 'Rocket',
-    gear: 'Settings',
-    lock: 'Lock',
-    unlock: 'Unlock',
-    custom: 'Custom'
+    folder: 'Folder'
   });
 
   const TERMINAL_ACTION_ICON_KEYS = new Set(Object.keys(TERMINAL_ACTION_ICONS));
@@ -89,66 +61,25 @@ function getDefaultTerminalActions() {
 }
 
 function normalizeTerminalToolbarAction(action) {
-  const source = action && typeof action === 'object' && !Array.isArray(action) ? action : {};
   const allowedActions = new Set([
     'clear',
     'copyAll',
     'copySelection',
     'paste',
-    'ctrlA',
     'ctrlC',
-    'ctrlD',
-    'ctrlE',
-    'ctrlK',
     'ctrlL',
-    'ctrlR',
-    'ctrlU',
-    'ctrlW',
-    'ctrlZ',
-    'enter',
-    'tab',
-    'escape',
-    'arrowUp',
-    'arrowDown',
-    'arrowLeft',
-    'arrowRight',
+    'ctrlD',
     'closeSession',
-    'sendText',
-    'typeText'
+    'sendText'
   ]);
-  const allowedItemTypes = new Set(['action', 'separator']);
-  const allowedVisibility = new Set(['all', 'local', 'ssh', 'admin', 'profile']);
-  const itemType = allowedItemTypes.has(String(source.itemType || ''))
-    ? String(source.itemType)
-    : 'action';
-  const selectedAction = allowedActions.has(String(source.action || ''))
-    ? String(source.action)
-    : 'sendText';
-  const icon = TERMINAL_ACTION_ICON_KEYS.has(String(source.icon || '')) ? String(source.icon) : 'terminal';
-  const customIcon = Array.from(String(source.customIcon || '').trim()).slice(0, 4).join('');
-  const color = /^#[0-9a-f]{6}$/i.test(String(source.color || '').trim())
-    ? String(source.color).trim().toLowerCase()
-    : '';
-  const visibility = allowedVisibility.has(String(source.visibility || ''))
-    ? String(source.visibility)
-    : 'all';
 
   return {
-    id: String(source.id || randomId('term-action')),
-    itemType,
-    name: String(source.name || (itemType === 'separator' ? 'Separator' : 'Terminal Action')).trim().slice(0, 100)
-      || (itemType === 'separator' ? 'Separator' : 'Terminal Action'),
-    action: selectedAction,
-    icon,
-    customIcon: icon === 'custom' ? customIcon : '',
-    color,
-    text: String(source.text || ''),
-    enabled: source.enabled !== false,
-    group: itemType === 'action' ? String(source.group || '').trim().replace(/\s+/g, ' ').slice(0, 50) : '',
-    dropdown: itemType === 'action' ? String(source.dropdown || '').trim().replace(/\s+/g, ' ').slice(0, 50) : '',
-    shortcut: itemType === 'action' ? String(source.shortcut || '').trim().slice(0, 80) : '',
-    visibility,
-    profileId: visibility === 'profile' ? String(source.profileId || '').trim().slice(0, 240) : ''
+    id: String(action?.id || randomId('term-action')),
+    name: String(action?.name || 'Terminal Action'),
+    action: allowedActions.has(String(action?.action || '')) ? String(action.action) : 'sendText',
+    icon: TERMINAL_ACTION_ICON_KEYS.has(String(action?.icon || '')) ? String(action.icon) : 'terminal',
+    text: String(action?.text || ''),
+    enabled: action?.enabled !== false
   };
 }
 

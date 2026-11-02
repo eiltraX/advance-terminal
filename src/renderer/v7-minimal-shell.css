@@ -1,0 +1,326 @@
+/* Advance Terminal V7 — minimal shell. Cosmetic overrides; preserve engine and handlers. */
+:root[data-theme="dark"] { --v7-bg:#080909; --v7-panel:#101112; --v7-control:#191a1c; --v7-border:#252628; --v7-fg:#e9e9ec; --v7-muted:#92959c; }
+:root { --v7-bg:#f7f7f7; --v7-panel:#fafafa; --v7-control:#efeff0; --v7-border:#d8d8d8; --v7-fg:#202126; --v7-muted:#73777c; }
+:root[data-theme="dark"] { --v7-bg:#080909; --v7-panel:#101112; --v7-control:#191a1c; --v7-border:#252628; --v7-fg:#e9e9ec; --v7-muted:#92959c; }
+.app-shell { grid-template-rows: 38px minmax(0, 1fr) 28px !important; }
+.v7-minimal-topbar {
+  position: relative; display: grid; grid-template-columns: minmax(60px,1fr) minmax(180px, 350px) minmax(100px,1fr);
+  gap: 12px; align-items: center; min-width: 0; height: 38px; padding: 0 12px;
+  background: var(--v7-panel); border-bottom: 1px solid var(--v7-border); color: var(--v7-fg); z-index: 1200;
+}
+.v7-shell-menu-wrap { position: relative; justify-self: start; }
+.v7-header-icon { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--v7-muted); cursor: pointer; }
+.v7-header-icon:hover, .v7-header-icon[aria-expanded="true"] { background: var(--v7-control); color: var(--v7-fg); }
+.v7-header-icon:focus-visible { outline: 2px solid #43aed6; outline-offset: 1px; }
+.v7-header-icon svg, .v7-quick-search svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.v7-primary-menu-button { background: var(--v7-control); color: var(--v7-fg); }
+.v7-shell-menu[hidden], .v7-global-results[hidden] { display: none !important; }
+.v7-shell-menu {
+  position: absolute; top: calc(100% + 7px); left: 0; width: min(520px, calc(100vw - 24px)); max-height: min(570px, calc(100vh - 65px));
+  overflow-x: hidden; overflow-y: auto; padding: 10px; z-index: 1600;
+  background: var(--v7-panel); border: 1px solid var(--v7-border); color: var(--v7-fg); border-radius: 9px;
+  box-shadow: 0 15px 38px rgba(0,0,0,.45);
+}
+.v7-menu-caption { margin: 0 0 7px; padding: 3px 7px; color: var(--v7-muted); font-size: 10px; font-weight: 600; letter-spacing: .1em; }
+.v7-shell-menu .menu-row { padding: 0; border: 0; min-height: 38px; background: transparent; justify-content: flex-start; }
+.v7-shell-menu .menu-left { display: flex; flex-wrap: wrap; gap: 3px; }
+.v7-shell-menu .menu-item { color: var(--v7-fg); border: 0; min-height: 29px; height: 29px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.v7-shell-menu .menu-item:hover, .v7-shell-menu .menu-item.active { color: var(--v7-fg); background: var(--v7-control); }
+.v7-shell-menu .mode-pill { display: none; }
+.v7-shell-menu .toolbar { display: grid; min-height: 0; padding: 8px 0 0; margin-top: 5px; border: 0; border-top: 1px solid var(--v7-border);
+  background: transparent; grid-template-columns: minmax(0,1fr); }
+.v7-shell-menu .toolbar-panel { grid-column: 1; grid-row: 1; min-height: 0; max-width: 100%; flex-wrap: wrap; gap: 5px; overflow: visible; }
+.v7-shell-menu .toolbar-panel.active { display: flex; }
+.v7-shell-menu .toolbar-global-actions { grid-row: 2; grid-column: 1; justify-content: flex-start; min-height: 0; margin-top: 7px; padding: 7px 0 0;
+  border: 0; border-top: 1px solid var(--v7-border); }
+.v7-shell-menu .tool-button { flex-direction: row; min-width: 0; max-width: 100%; min-height: 30px; height: 32px;
+  padding: 5px 9px; gap: 7px; background: transparent; color: var(--v7-fg); font-size: 11px; line-height: 1.15; border: 0; border-radius: 6px; cursor: pointer; }
+.v7-shell-menu .tool-button > span:not(.tool-icon) { display: block; max-width: 150px; }
+.v7-shell-menu .tool-button:hover { background: var(--v7-control); }
+.v7-shell-menu .tool-icon { width: 19px; height: 19px; flex: 0 0 19px; }
+.v7-shell-menu .toolbar-separator { height: 26px; }
+.v7-shell-menu .dynamic-toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.v7-quick-search { position: relative; justify-self: center; display: flex; align-items: center; width: min(100%,350px); height: 27px;
+  border-radius: 5px; background: var(--v7-control); color: var(--v7-muted); padding: 0 9px; gap: 7px; }
+.v7-quick-search svg { width: 15px; height: 15px; flex: 0 0 15px; }
+.v7-quick-search input { flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; outline: 0; background: transparent; color: var(--v7-fg); font-size: 12px; }
+.v7-quick-search input::-webkit-search-cancel-button { cursor: pointer; }
+.v7-quick-search input::placeholder { color: var(--v7-muted); }
+.v7-quick-search:focus-within { outline: 1px solid #2986a4; }
+.v7-quick-search kbd { font-family: inherit; font-size: 9px; color: var(--v7-muted); white-space: nowrap; }
+.v7-global-results { position: absolute; top: calc(100% + 9px); left: 0; right: 0; max-height: min(400px, 65vh); overflow: auto;
+  background: var(--v7-panel); border: 1px solid var(--v7-border); border-radius: 8px; box-shadow: 0 18px 38px rgba(0,0,0,.4); padding: 5px; z-index: 1600; }
+.v7-result-item { display: grid; grid-template-columns: 75px minmax(0,1fr); gap: 9px; width: 100%; padding: 9px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--v7-fg); text-align: left; cursor: pointer; }
+.v7-result-item:hover, .v7-result-item:focus-visible { outline: none; background: var(--v7-control); }
+.v7-result-item small { color: var(--v7-muted); font-size: 10px; }
+.v7-result-item span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.v7-no-results { padding: 10px; color: var(--v7-muted); margin: 0; }
+.v7-minimal-tools { display: flex; align-items: center; gap: 5px; justify-self: end; }
+.v7-identity { margin-left: 7px; color: var(--v7-muted); font-size: 10px; }
+/* Main app shell: subtle surfaces, large black terminal, fixed-height header. */
+.workspace { grid-template-columns: 250px minmax(0,1fr); gap: 0 !important; padding: 0 !important; background: var(--v7-bg); }
+.workspace.connections-collapsed { grid-template-columns: 46px minmax(0,1fr); }
+.workspace.connections-hidden { grid-template-columns: minmax(0,1fr); }
+:root[data-theme="dark"] .workspace .servers-panel { background: #111213; }
+:root[data-theme="dark"] .workspace .content-panel { background: #090909; }
+.workspace .servers-panel, .workspace .content-panel { border: 0 !important; box-shadow: none !important; }
+.workspace .servers-panel { border-right: 1px solid var(--v7-border) !important; }
+.v7-session-sidebar { flex: 0 0 auto; padding: 7px 7px 5px; border-bottom: 1px solid var(--v7-border); }
+.v7-session-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 5px; color: var(--v7-muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+.v7-session-plus { width: 22px; height: 22px; border: 0; border-radius: 5px; background: transparent; color: var(--v7-fg); cursor: pointer; font-size: 19px; }
+.v7-session-plus:hover { background: var(--v7-control); }
+.v7-session-list { max-height: 176px; overflow-y: auto; }
+.v7-sessions-empty { color: var(--v7-muted); margin: 5px 7px 9px; font-size: 11px; }
+.v7-session-item { width: 100%; display: flex; align-items: center; text-align: left; gap: 10px; padding: 7px 8px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--v7-fg); cursor: pointer; }
+.v7-session-item:hover { background: var(--v7-control); }
+.v7-session-item.active { background: #2a2b2e; border-color: #393b3f; }
+.v7-session-dot { width: 23px; height: 23px; border-radius: 50%; display: inline-grid; place-items: center;
+  background: #303236; color: #c9ced5; flex: 0 0 23px; }
+.v7-session-dot svg { width: 15px; height: 15px; display: block; fill: none;
+  stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.v7-session-name { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.v7-session-name strong, .v7-session-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v7-session-name strong { font-size: 12px; font-weight: 500; }
+.v7-session-name small { font-size: 10px; color: var(--v7-muted); }
+.v7-session-indicator { display: none; width: 10px; height: 10px; flex: 0 0 10px; border: 2px solid #6b6f78; border-top-color: #28a9d6; border-radius: 50%; }
+.v7-session-item.is-working .v7-session-indicator { display: block; animation: v7-tab-working 850ms linear infinite; }
+@keyframes v7-tab-working { to { transform: rotate(360deg); } }
+.servers-panel.is-collapsed .v7-session-sidebar { display: none; }
+/* Compact and flat Servers/Commands, search and connection cards. */
+.servers-panel .left-tabbar { min-height: 34px !important; height: 34px !important; padding: 0 24px 0 4px !important; border-bottom: 0 !important; background: transparent !important; align-items: center; }
+.servers-panel .left-tab { min-height: 29px !important; height: 29px !important; padding: 0 6px; border-radius: 5px !important; font-size: 11px !important; font-weight: 500; }
+.servers-panel .left-tab::before, .servers-panel .left-tab::after { display: none !important; }
+.servers-panel .left-tab.active { box-shadow: none !important; background: #292a2d !important; }
+.servers-panel .panel-collapse-button { top: 5px !important; right: 4px !important; }
+:root[data-theme="dark"] .servers-panel .left-tabbar { color: var(--v7-fg); }
+/* Keep original internal tab DOM for pinned tabs, drag metadata and picker logic,
+   while showing sessions in the sidebar. Never remove/recreate backend tabs. */
+#terminal-view .terminal-tabs { display: none !important; }
+:root[data-theme="dark"] #terminal-view { background: #090909 !important; }
+:root[data-theme="dark"] .terminal-session-header { height: 30px !important; min-height: 30px !important; border: 0 !important; background: #090909 !important;
+  padding: 3px 13px !important; }
+:root[data-theme="dark"] #terminal-host { background: #090909 !important; }
+:root[data-theme="dark"] .terminal-location-pill { background: transparent !important; }
+:root[data-theme="dark"] .terminal-session-header .status-pill { font-size: 10px; }
+:root[data-theme="dark"] .statusbar { height: 28px !important; min-height: 28px !important; }
+@media (max-width: 850px) {
+  .workspace { grid-template-columns: 206px minmax(0,1fr); }
+  .v7-minimal-topbar { grid-template-columns: 38px minmax(0,1fr) 78px; gap: 6px; padding-inline: 7px; }
+  .v7-quick-search kbd, .v7-identity { display: none; }
+  .v7-minimal-tools { gap: 0; }
+}
+@media (max-width: 560px) { .workspace { grid-template-columns: 170px minmax(0,1fr); } .v7-session-list { max-height: 100px; } }
+@media (prefers-reduced-motion: reduce) { .v7-session-item, .v7-header-icon { transition: none !important; } .v7-session-item.is-working .v7-session-indicator { animation: none; } }
+
+/* V7 sessions-first sidebar: hide the Servers / Commands section by default,
+   but keep the original DOM, handlers and data intact for menu navigation. */
+.v7-shell-menu .v7-sidebar-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0 0 12px;
+  padding: 0 5px 10px;
+  border-bottom: 1px solid var(--v7-border);
+}
+.v7-shell-menu .v7-sidebar-nav-action {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--v7-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.v7-shell-menu .v7-sidebar-nav-action:hover,
+.v7-shell-menu .v7-sidebar-nav-action.is-active {
+  color: var(--v7-fg);
+  background: var(--v7-control);
+}
+.v7-shell-menu .v7-sidebar-nav-action:focus-visible {
+  outline: 2px solid #43aed6;
+  outline-offset: 0;
+}
+#servers-panel.v7-sessions-only .left-tabbar,
+#servers-panel.v7-sessions-only .collapsed-left-tabbar,
+#servers-panel.v7-sessions-only .left-tab-panel {
+  display: none !important;
+}
+#servers-panel.v7-sessions-only .v7-session-sidebar {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  border-bottom: 0;
+}
+#servers-panel.v7-sessions-only .v7-session-list {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+#servers-panel.v7-directory-view .v7-session-sidebar {
+  display: none !important;
+}
+
+/* V7 finalized sessions sidebar: keep one focused, searchable session list. */
+.v7-session-count { display: inline-block; margin-left: 5px; color: var(--v7-muted); font-size: 10px; font-weight: 500; }
+.v7-session-search-row { position: relative; display: flex; align-items: center; min-height: 30px; margin: 2px 3px 9px; }
+.v7-session-search-icon { position: absolute; left: 9px; pointer-events: none; color: var(--v7-muted); font-size: 17px; line-height: 1; }
+.v7-session-search { box-sizing: border-box; width: 100%; min-width: 0; height: 30px; padding: 0 9px 0 29px;
+  border: 1px solid var(--v7-border); border-radius: 6px; background: var(--v7-panel); color: var(--v7-fg); font: inherit; font-size: 11px; }
+.v7-session-search::placeholder { color: var(--v7-muted); }
+.v7-session-search:focus-visible { outline: 1px solid #43aed6; outline-offset: 0; }
+/* V7 session colors: no selection rail, outlines, or dull color-mix on palette choices.
+   Opaque card fills retain readable text and show selection through color alone.
+   Keep a transparent border to avoid changing the existing card dimensions. */
+.v7-session-row { display: flex; align-items: center; gap: 2px; position: relative; min-width: 0; margin: 6px 0 4px;
+  border-radius: 8px; background: #202226; border: 1px solid transparent; overflow: visible;
+  box-shadow: none; transition: background-color 120ms ease; }
+.v7-session-row:not(.active):is(:hover, :focus-within) { background: #2a2e34; }
+.v7-session-row.active { background: #444d5a; border-color: transparent; box-shadow: none; }
+.v7-session-row.active .v7-session-name strong { color: #fff; font-weight: 650; }
+.v7-session-row.active .v7-session-name small { color: #e4e7ec; }
+.v7-session-row:not(.active) .v7-session-name strong { color: #d9dee6; font-weight: 500; }
+.v7-session-row:not(.active) .v7-session-name small { color: #a1a7b1; }
+
+/* Each chosen palette color has its own coordinated, opaque dark-mode fills.
+   The active card receives the palette's strongest color; idle and hover stay muted. */
+.v7-session-row.has-custom-color { background: var(--v7-session-color-idle); border-color: transparent; box-shadow: none; }
+.v7-session-row.has-custom-color:not(.active):is(:hover, :focus-within) { background: var(--v7-session-color-hover); }
+.v7-session-row.has-custom-color.active { background: var(--v7-session-color-active); border-color: transparent; box-shadow: none; }
+.v7-session-row .v7-session-item { min-width: 0; flex: 1 1 auto; border: 0; border-radius: 8px; padding: 9px 52px 9px 8px;
+  background: transparent; }
+.v7-session-row .v7-session-item:hover, .v7-session-row .v7-session-item.active { background: transparent; }
+.v7-session-row .v7-session-name { flex: 1 1 auto; }
+/* A quiet, top-right pin appears only while the card is pinned and idle.
+   Hover/focus replaces it with the relevant action button(s). */
+.v7-session-row .v7-session-pin {
+  position: absolute; top: 7px; right: 10px; z-index: 1;
+  width: 14px; height: 14px; display: inline-grid; place-items: center;
+  color: #aeb3bd; opacity: .58; pointer-events: none;
+  transition: opacity 100ms ease;
+}
+.v7-session-row .v7-session-pin svg { width: 12px; height: 12px; display: block; fill: currentColor; }
+.v7-session-row .v7-session-pin[hidden] { display: none; }
+.v7-session-row:hover .v7-session-pin,
+.v7-session-row:focus-within .v7-session-pin { opacity: 0; }
+.v7-session-row .v7-session-indicator { flex: 0 0 10px; }
+.v7-session-row.is-working .v7-session-indicator { display: block; animation: v7-tab-working 850ms linear infinite; }
+.v7-session-actions, .v7-session-close {
+  position: absolute; top: -4px; z-index: 2; width: 23px; height: 23px;
+  margin: 0; padding: 0; border: 1px solid #3a3e46; border-radius: 5px;
+  background: #2a2d32; color: var(--v7-muted); cursor: pointer;
+  display: inline-grid; place-items: center; opacity: 0;
+  box-shadow: 0 1px 0 rgba(0,0,0,.32);
+}
+.v7-session-actions { right: 27px; font-size: 18px; line-height: 1; }
+.v7-session-close { right: 3px; font-size: 16px; line-height: 1; }
+/* Pin is informational, not a close lock. Hover offers both actions. */
+.v7-session-row:hover .v7-session-actions, .v7-session-row:focus-within .v7-session-actions,
+.v7-session-row:hover .v7-session-close, .v7-session-row:focus-within .v7-session-close { opacity: 1; }
+.v7-session-actions:hover, .v7-session-actions:focus-visible,
+.v7-session-close:hover:not(:disabled), .v7-session-close:focus-visible { background: #3b3f46; color: var(--v7-fg); border-color: #4a4f59; opacity: 1; }
+.v7-session-close:disabled { opacity: .28 !important; cursor: not-allowed; }
+.v7-session-close:focus-visible { outline: 2px solid #43aed6; outline-offset: -2px; }
+@media (hover: none) { .v7-session-actions, .v7-session-close { opacity: 1; } }
+.v7-session-section-header { padding: 12px 9px 4px; font-size: 10px; font-weight: 600; color: var(--v7-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v7-session-context-menu { width: min(196px, calc(100vw - 16px)); padding: 5px; background: #28292c;
+  border-color: #414247; }
+.v7-session-context-menu .terminal-tab-context-item { padding: 9px 10px; color: #ededf0; }
+.v7-session-context-menu .terminal-tab-context-item:hover:not(:disabled),
+.v7-session-context-menu .terminal-tab-context-item:focus-visible { background: #414247; }
+.v7-session-color-list { display: flex; gap: 5px; align-items: center; justify-content: space-between; padding: 7px 3px 3px; }
+.v7-session-color-option { flex: 0 0 16px; width: 16px; height: 16px; padding: 0; cursor: pointer;
+  border: 1px solid transparent; border-radius: 50%; background: var(--v7-swatch, transparent); }
+.v7-session-color-option.is-clear { position: relative; border: 1px solid #7aaed5; }
+.v7-session-color-option.is-clear::after { content: ''; position: absolute; left: 1px; right: 1px; top: 6px;
+  height: 1px; background: #7aaed5; transform: rotate(-45deg); }
+.v7-session-color-option:hover, .v7-session-color-option:focus-visible,
+.v7-session-color-option[aria-pressed="true"] { outline: 2px solid #d7e3ee; outline-offset: 2px; }
+.v7-session-item:focus-visible, .v7-session-actions:focus-visible { outline: 2px solid #43aed6; outline-offset: -2px; }
+@media (hover: none) { .v7-session-actions { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .v7-session-row.is-working .v7-session-indicator { animation: none; } }
+
+
+/* V7 New Session chooser: on-demand popup only, no background listeners/timers. */
+.v7-new-session-menu {
+  position: fixed; z-index: 1700; box-sizing: border-box;
+  width: min(310px, calc(100vw - 16px)); max-height: calc(100vh - 24px);
+  overflow-y: auto; padding: 7px; border: 1px solid var(--v7-border);
+  border-radius: 9px; background: var(--v7-panel); color: var(--v7-fg);
+  box-shadow: 0 14px 36px rgba(0,0,0,.36);
+}
+.v7-new-session-heading { padding: 6px 9px 7px; color: var(--v7-muted); font-size: 10px; letter-spacing: .06em; font-weight: 600; }
+.v7-new-session-item { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  width: 100%; min-height: 47px; text-align: left; padding: 8px 9px;
+  background: transparent; color: var(--v7-fg); border: 0; border-radius: 6px; cursor: pointer;
+  font-size: 12px; font-family: inherit;
+}
+.v7-new-session-item small { font-size: 10px; color: var(--v7-muted); }
+.v7-new-session-item:hover, .v7-new-session-item:focus-visible { background: var(--v7-control); outline: none; }
+.v7-new-session-item:focus-visible { box-shadow: inset 0 0 0 1px #43aed6; }
+
+/* V7 active-session activity indicator: replace type glyph in place, without
+   rebuilding tabs, changing session colors, or adding a separate spinner. */
+.v7-session-row .v7-session-dot {
+  position: relative; color: #959da8;
+}
+.v7-session-row.active .v7-session-dot { color: #55aaff; }
+.v7-session-row.is-working .v7-session-dot svg { visibility: hidden; }
+.v7-session-row.is-working .v7-session-dot::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 15px; height: 15px;
+  box-sizing: border-box; border: 2px solid currentColor;
+  border-right-color: transparent; border-radius: 50%;
+  animation: v7-tab-working 850ms linear infinite;
+}
+/* The animated icon itself replaces the older trailing progress spinner. */
+.v7-session-row .v7-session-indicator,
+.v7-session-row.is-working .v7-session-indicator { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .v7-session-row.is-working .v7-session-dot::after { animation: none; border-style: dotted; }
+}
+
+/* Sidebar v7.1: one + opens the existing PowerShell/CMD picker; the global
+   top-right New Session menu is deliberately unchanged. */
+.v7-session-new-actions { display: inline-flex; align-items: center; }
+.v7-session-plus { min-width: 29px; min-height: 26px; }
+.v7-session-plus:focus-visible { background: var(--v7-control); outline: 1px solid #43aed6; }
+.v7-session-section-header[data-v7-section-id="v7-section-pinned"],
+.v7-session-section-header[data-v7-section-id="v7-section-sessions"] {
+  color: #b6bdc9; letter-spacing: .08em; padding-top: 13px;
+}
+/* Child entries are real, independent terminal cards, not links inside a parent. */
+.v7-session-row.is-child { margin-left: 19px; width: calc(100% - 19px); box-sizing: border-box; }
+.v7-session-row.is-child::before {
+  content: ''; pointer-events: none; position: absolute; left: -11px; top: -8px;
+  width: 7px; height: 25px; border-left: 1px solid #505b68;
+  border-bottom: 1px solid #505b68; border-bottom-left-radius: 4px;
+}
+.v7-session-expand {
+  flex: 0 0 18px; width: 18px; height: 25px; margin: 0 0 0 3px;
+  border: 0; border-radius: 4px; padding: 0; background: transparent;
+  color: #b6c6d8; cursor: pointer; font-size: 14px;
+}
+.v7-session-expand[hidden] { display: none; }
+.v7-session-expand:focus-visible, .v7-session-expand:hover { outline: 1px solid #43aed6; }
+.v7-session-row.is-drop-target { outline: 2px dashed #62a5df; outline-offset: 1px; }
+.v7-session-row.is-dragging { opacity: .5; }
+.v7-session-section-header.is-drop-target { outline: 1px dashed #62a5df; border-radius: 5px; background: #22364a; }
+
+/* Session drag-and-drop: top / center / bottom target zones. Keep the
+   child connector (::before) and the active card styling intact. */
+.v7-session-row.is-drop-before::after,
+.v7-session-row.is-drop-after::after {
+  content: ''; position: absolute; z-index: 2; left: 0; right: 0;
+  height: 3px; border-radius: 3px; background: #75c5fb;
+  pointer-events: none; box-shadow: 0 0 0 1px #10283b;
+}
+.v7-session-row.is-drop-before::after { top: -4px; }
+.v7-session-row.is-drop-after::after { bottom: -4px; }
+.v7-session-row.is-drop-target { outline: 2px dashed #62a5df; outline-offset: 1px; }

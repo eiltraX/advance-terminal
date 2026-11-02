@@ -1,0 +1,26 @@
+// Advance Terminal V7: Tools flyout four-item routing contract.
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const file = path.resolve(__dirname,'../src/renderer/v7-frameless-titlebar.js');
+const src = fs.readFileSync(file,'utf8');
+new vm.Script(src, {filename:'v7-frameless-titlebar.js'});
+const menuBlock = src.match(/const toolsMenu = makeMenu\('v7-tools-menu','Tools',\[([\s\S]*?)\n    \]\);/);
+assert(menuBlock,'Tools menu declaration not found');
+const found = [...menuBlock[1].matchAll(/\{label:'([^']+)',tool:'([^']+)',icon:'([^']+)'\}/g)].map(([,label,tool,icon])=>({label,tool,icon}));
+assert.deepEqual(found.map(x=>x.label), ['Servers','SSH','Local','Commands']);
+assert.deepEqual(found.map(x=>x.tool), ['servers','ssh','local','commands']);
+assert.deepEqual(found.map(x=>x.icon), ['servers','ssh','sessions','commands']);
+assert(src.includes("if (!['servers','ssh','local','commands'].includes(key)) return false;"));
+assert(src.includes("(['servers', 'ssh', 'local'].includes(key)) ? node === connections"));
+assert(src.includes("key === 'local' ? 'Local Connections'"));
+assert(src.includes("const type = key === 'ssh' ? 'remote' : key === 'local' ? 'local' : 'all';"));
+assert(src.includes("useExistingSideTab('commands')"));
+assert(src.includes("useExistingSideTab('connections')"));
+assert(src.includes("if (typeof window.setConnectionFilter === 'function') window.setConnectionFilter(type)"));
+assert(src.includes("if (key === 'servers') addAction('Commands'"));
+assert(src.includes('window.v7PushFlyout = {openTool,openPage,close:closePanel'));
+assert(!/setInterval\s*\(/.test(src),'No new polling loops');
+console.log('PASS: V7 Tools menu order, SSH/local/all filters, commands flyout and syntax');

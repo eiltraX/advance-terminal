@@ -1,0 +1,69 @@
+/* Advance Terminal V7 — Design System, Stage 2 (2026-10-12).
+   Scoped presentation polish: Settings and modal forms only.
+   Inherit the Stage 1 tokens. Do not change geometry, terminal input,
+   saved settings, SSH, session tabs, command composer or scrollbars. */
+
+/* Unify existing Settings tabs and cards without touching the flyout layout. */
+#settings-view .settings-tab {
+  border-radius: var(--v7ds-radius-control);
+  transition: background-color var(--v7ds-motion-fast) ease,
+              color var(--v7ds-motion-fast) ease,
+              border-color var(--v7ds-motion-fast) ease;
+}
+#settings-view .settings-tab:focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: -1px;
+}
+#settings-view .windows-group {
+  border-radius: var(--v7ds-radius-popup);
+}
+
+/* Restore a predictable scale for regular form fields only; leave toggles,
+   checkbox geometry and the terminal/editor inputs unchanged. */
+#settings-view :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+.modal .modal-box :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  border-radius: var(--v7ds-radius-control);
+  transition: border-color var(--v7ds-motion-fast) ease,
+              box-shadow var(--v7ds-motion-fast) ease;
+}
+#settings-view :is(input:not([type="checkbox"]):not([type="radio"]), select),
+.modal .modal-box :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  font-family: var(--v7ds-font-ui);
+  font-size: var(--v7ds-font-control);
+}
+#settings-view :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus,
+.modal .modal-box :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  outline: none;
+  border-color: var(--v7ds-focus-ring);
+  box-shadow: 0 0 0 1px var(--v7ds-focus-ring);
+}
+
+/* Dialog buttons, action rows, and popup corners share the same visual rules.
+   Keep the existing primary/danger colors and button sizes. */
+.modal .modal-box {
+  border-radius: var(--v7ds-radius-popup);
+}
+#settings-view :is(.primary-button, .secondary-button, .danger-button),
+.modal .modal-box :is(.primary-button, .secondary-button, .danger-button) {
+  border-radius: var(--v7ds-radius-control);
+  font-family: var(--v7ds-font-ui);
+  font-size: var(--v7ds-font-control);
+  transition: background-color var(--v7ds-motion-fast) ease,
+              border-color var(--v7ds-motion-fast) ease,
+              color var(--v7ds-motion-fast) ease;
+}
+#settings-view :is(.primary-button, .secondary-button, .danger-button):focus-visible,
+.modal .modal-box :is(.primary-button, .secondary-button, .danger-button):focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #settings-view .settings-tab,
+  #settings-view :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+  .modal .modal-box :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+  #settings-view :is(.primary-button, .secondary-button, .danger-button),
+  .modal .modal-box :is(.primary-button, .secondary-button, .danger-button) {
+    transition: none;
+  }
+}

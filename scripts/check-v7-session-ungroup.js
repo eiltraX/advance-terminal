@@ -1,0 +1,38 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync('src/renderer/renderer.js', 'utf8');
+const start = source.indexOf('function ungroupV7Session(terminalId) {');
+const end = source.indexOf('\nfunction showV7SessionActionsMenu', start);
+assert(start >= 0 && end > start, 'Ungroup function not found');
+const code = source.slice(start, end);
+const sessions = new Map();
+const a = { terminalId: 'tab-1', v7GroupId: 'group-1', v7GroupName: 'Group 1', tabPinned: true, tabColor: '#d76559', closed: true, processBusy: false };
+const b = { terminalId: 'tab-2', v7GroupId: 'group-1', v7GroupName: 'Group 1' };
+sessions.set(a.terminalId, a);
+sessions.set(b.terminalId, b);
+let renderCalls = 0;
+let pinSaves = 0;
+const sandbox = { state: { terminals: sessions, activeTerminalId: 'tab-2' },
+  persistPinnedTerminalTabs: () => { pinSaves++; return true; },
+  renderV7MinimalSessionList: () => { renderCalls++; } };
+vm.createContext(sandbox);
+vm.runInContext(code + '\nthis.ungroup = ungroupV7Session;', sandbox);
+const before = Array.from(sessions.keys());
+assert.equal(sandbox.ungroup('tab-1'), true);
+assert.equal(a.v7GroupId, null);
+assert.equal(a.v7GroupName, null);
+assert.equal(b.v7GroupId, 'group-1', 'other group member must remain');
+assert.deepEqual(Array.from(sessions.keys()), before, 'tab order must not change');
+assert.equal(sandbox.state.activeTerminalId, 'tab-2');
+assert.equal(a.tabPinned, true);
+assert.equal(a.tabColor, '#d76559');
+assert.equal(a.closed, true);
+assert.equal(renderCalls, 1);
+assert.equal(pinSaves, 1, 'pinned group assignment must be updated on disk');
+assert.equal(sandbox.ungroup('tab-1'), false, 'repeat should be harmless');
+assert.equal(sandbox.ungroup('missing'), false);
+assert.equal(renderCalls, 1);
+assert(source.includes("...(session.v7GroupId ? [terminalTabMenuButton('Ungroup', () => ungroupV7Session(terminalId))] : [])"), 'menu entry not found');
+assert(source.includes('fresh.v7GroupId = replacing.v7GroupId;'), 'Stage 5 reconnection group preservation missing');
+console.log('PASS: V7 ungroup action, tab ordering, other group members and reconnect compatibility');

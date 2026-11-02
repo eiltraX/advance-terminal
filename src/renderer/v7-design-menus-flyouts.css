@@ -1,0 +1,44 @@
+/* Advance Terminal V7 — Design System Stage 3: menu / flyout chrome.
+   Presentation-only. Never restyle xterm, terminal viewport, composer,
+   tab state animations, session cards or ultra-thin scrollbar geometry. */
+:root :is(.v7-shell-menu, .v7-header-popup, .v7-new-session-menu,
+  .sidebar-context-menu) {
+  border-radius: var(--v7ds-radius-popup, 10px);
+}
+:root :is(.v7-shell-menu .tool-button, .v7-shell-menu .menu-item,
+  .v7-shell-menu .v7-sidebar-nav-action,
+  .v7-header-popup .v7-header-popup-item,
+  .v7-new-session-menu button, .sidebar-context-menu button) {
+  border-radius: var(--v7ds-radius-control, 6px);
+  transition: background-color var(--v7ds-motion-fast, 120ms) ease,
+              color var(--v7ds-motion-fast, 120ms) ease,
+              border-color var(--v7ds-motion-fast, 120ms) ease;
+}
+:root :is(.v7-shell-menu .tool-button, .v7-shell-menu .menu-item,
+  .v7-shell-menu .v7-sidebar-nav-action,
+  .v7-header-popup .v7-header-popup-item,
+  .v7-new-session-menu button, .sidebar-context-menu button):focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: -1px;
+}
+/* Normalize pictograms without changing width of their parent controls. */
+:root :is(.v7-shell-menu .tool-icon svg,
+  .v7-header-popup-item svg, .v7-flyout-action svg,
+  .v7-flyout-close svg, .v7-header-icon svg) {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+:root .v7-shell-menu .tool-icon svg { stroke-width: 1.8; }
+:root .v7-header-popup-item svg { stroke-width: 1.8; }
+:root .v7-flyout-heading { gap: var(--v7ds-space-2, 8px); }
+:root :is(.v7-flyout-action, .v7-flyout-close):focus-visible {
+  outline: 1px solid var(--v7ds-focus-ring);
+  outline-offset: -1px;
+}
+:root .v7-header-popup .v7-header-popup-item { gap: var(--v7ds-space-2, 8px); }
+@media (prefers-reduced-motion: reduce) {
+  :root :is(.v7-shell-menu .tool-button, .v7-shell-menu .menu-item,
+    .v7-shell-menu .v7-sidebar-nav-action,
+    .v7-header-popup .v7-header-popup-item,
+    .v7-new-session-menu button, .sidebar-context-menu button) { transition: none; }
+}

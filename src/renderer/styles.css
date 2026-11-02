@@ -2083,57 +2083,6 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
-.terminal-tab-picker-search {
-  position: sticky;
-  top: -6px;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: -1px -1px 5px;
-  padding: 7px;
-  border-bottom: 1px solid var(--win-border);
-  background: var(--win-panel);
-}
-
-.terminal-tab-picker-search-icon {
-  flex: 0 0 auto;
-  width: 18px;
-  color: var(--win-muted);
-  font-size: 15px;
-  line-height: 1;
-  text-align: center;
-}
-
-.terminal-tab-picker-search-input {
-  width: 100%;
-  min-width: 0;
-  height: 30px;
-  padding: 5px 9px;
-  border: 1px solid var(--win-border-dark);
-  border-radius: 5px;
-  outline: none;
-  background: var(--win-input-bg, #1f1f1f);
-  color: var(--win-text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.terminal-tab-picker-search-input::placeholder {
-  color: var(--win-muted);
-}
-
-.terminal-tab-picker-search-input:focus {
-  border-color: var(--win-blue);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--win-blue) 32%, transparent);
-}
-
-.terminal-tab-picker-item.hidden,
-.terminal-tab-picker-section.hidden,
-.terminal-tab-picker-no-matches.hidden {
-  display: none !important;
-}
-
 .terminal-tab-picker-section + .terminal-tab-picker-section {
   margin-top: 6px;
   padding-top: 6px;
@@ -2415,11 +2364,9 @@ textarea:focus {
   display: none;
   width: 100%;
   height: 100%;
-  padding: 8px;
+  padding: 8px 8px 8px 8px;
   background: #0c0c0c;
   position: relative;
-  box-sizing: border-box;
-  overflow: hidden;
 }
 
 .terminal-pane.active {
@@ -2427,45 +2374,13 @@ textarea:focus {
 }
 
 .terminal-pane .xterm {
-  width: 100%;
   height: 100%;
-  min-width: 0;
-  /*
-   * Keep one clear text column before Chromium's overlay-style native
-   * scrollbar. FitAddon measures this padding, so the PTY gets fewer
-   * columns instead of allowing text to render underneath the scrollbar.
-   */
-  padding-right: 14px;
-  box-sizing: border-box;
 }
 
 .terminal-pane .xterm-viewport {
   background: #0c0c0c !important;
-  padding-right: 0 !important;
+  padding-right: 0.5rem !important;
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(145, 145, 145, 0.72) #151515;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-track {
-  background: #151515;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb {
-  min-height: 28px;
-  border: 1px solid #151515;
-  border-radius: 999px;
-  background: rgba(145, 145, 145, 0.72);
-  background-clip: padding-box;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(190, 190, 190, 0.88);
-  background-clip: padding-box;
 }
 
 .terminal-connect-overlay {
@@ -4970,47 +4885,52 @@ textarea {
   --tool-tint: rgba(251, 113, 133, 0.10);
 }
 
-.dynamic-terminal-action.terminal-action-kind-sendText,
-.dynamic-terminal-action.terminal-action-kind-typeText {
+.dynamic-terminal-action.terminal-action-kind-sendText {
   --tool-accent: #a78bfa;
   --tool-tint: rgba(167, 139, 250, 0.10);
-}
-
-.dynamic-terminal-action.terminal-action-kind-ctrlA,
-.dynamic-terminal-action.terminal-action-kind-ctrlE,
-.dynamic-terminal-action.terminal-action-kind-ctrlK,
-.dynamic-terminal-action.terminal-action-kind-ctrlR,
-.dynamic-terminal-action.terminal-action-kind-ctrlU,
-.dynamic-terminal-action.terminal-action-kind-ctrlW,
-.dynamic-terminal-action.terminal-action-kind-ctrlZ {
-  --tool-accent: #2dd4bf;
-  --tool-tint: rgba(45, 212, 191, 0.10);
-}
-
-.dynamic-terminal-action.terminal-action-kind-enter,
-.dynamic-terminal-action.terminal-action-kind-tab,
-.dynamic-terminal-action.terminal-action-kind-escape,
-.dynamic-terminal-action.terminal-action-kind-arrowUp,
-.dynamic-terminal-action.terminal-action-kind-arrowDown,
-.dynamic-terminal-action.terminal-action-kind-arrowLeft,
-.dynamic-terminal-action.terminal-action-kind-arrowRight {
-  --tool-accent: #f97316;
-  --tool-tint: rgba(249, 115, 22, 0.10);
-}
-
-.dynamic-terminal-action.has-custom-color {
-  background: var(--tool-tint);
-  border-color: var(--tool-border-accent);
-}
-
-.dynamic-terminal-action.has-custom-color:hover {
-  background: var(--tool-tint);
-  border-color: var(--tool-accent);
 }
 
 #tool-settings-terminal-actions {
   --tool-accent: #22c55e;
   --tool-tint: rgba(34, 197, 94, 0.10);
+}
+
+/* Lightweight acknowledgement for successful toolbar actions (v5 fast path unchanged). */
+.dynamic-terminal-action.is-action-confirmed .tool-icon,
+:root[data-theme="dark"] .dynamic-terminal-action.is-action-confirmed:hover .tool-icon,
+:root:not([data-theme="dark"]) .dynamic-terminal-action.is-action-confirmed:hover .tool-icon {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.38);
+  color: #22c55e;
+  animation: terminal-action-confirm-pop 180ms ease-out both;
+}
+
+.dynamic-terminal-action.is-action-confirmed .tool-icon svg {
+  opacity: 0;
+}
+
+.dynamic-terminal-action.is-action-confirmed .tool-icon::after {
+  content: "\2713";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #22c55e;
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@keyframes terminal-action-confirm-pop {
+  from { transform: scale(0.82); }
+  to { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dynamic-terminal-action.is-action-confirmed .tool-icon {
+    animation: none;
+  }
 }
 
 /* Settings → Terminal Actions */
@@ -5087,19 +5007,6 @@ textarea {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.terminal-action-custom-icon {
-  font-family: "Segoe UI Emoji", "Segoe UI Symbol", var(--font);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.tool-icon.terminal-action-custom-icon {
-  font-size: 17px;
 }
 
 .terminal-action-list-main {
@@ -5214,40 +5121,6 @@ textarea {
   color: var(--win-muted);
   font-size: 11px;
   text-align: center;
-}
-
-.terminal-action-color-field {
-  margin-top: 2px;
-}
-
-.terminal-action-color-controls {
-  display: grid;
-  grid-template-columns: minmax(150px, auto) 52px minmax(84px, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-
-.terminal-action-color-controls .compact-check-row {
-  padding-top: 0;
-  white-space: nowrap;
-}
-
-#terminal-action-color {
-  width: 52px;
-  min-width: 52px;
-  padding: 2px;
-  cursor: pointer;
-}
-
-#terminal-action-color:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.terminal-action-color-value {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--win-muted);
 }
 
 .terminal-action-editor-actions {
@@ -6416,1850 +6289,739 @@ textarea {
 }
 
 
-/* Advance Terminal V5 responsive terminal + clipboard/admin UI patch. */
-.admin-mode-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.admin-mode-indicator {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-  background: var(--win-muted);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--win-muted) 18%, transparent);
-}
-
-.admin-mode-row.is-elevated .admin-mode-indicator {
-  background: var(--win-green);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--win-green) 18%, transparent);
-}
-
-.admin-mode-copy {
-  min-width: 0;
-}
-
-.admin-mode-copy strong,
-.admin-mode-copy small {
-  display: block;
-}
-
-.admin-mode-copy small {
-  margin-top: 3px;
-  color: var(--win-muted);
-}
-
-.admin-mode-button {
-  white-space: nowrap;
-}
-
-.live-console-tab-row {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: stretch;
-  justify-content: flex-end;
-}
-
-.live-console-tab-row .live-console-tab {
-  border-radius: 5px 0 0 0;
-}
-
-.live-console-dismiss {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--win-border-dark);
-  border-left: 0;
-  border-bottom: 0;
-  border-radius: 0 5px 0 0;
-  background: var(--win-panel);
-  color: var(--win-muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: default;
-}
-
-.live-console-dismiss:hover,
-.live-console-dismiss:focus-visible {
-  background: color-mix(in srgb, var(--win-danger) 16%, var(--win-panel));
-  color: var(--win-danger);
-  outline: none;
-}
-
-.live-console.is-dismissed {
-  display: none;
-}
-
-/* Narrow Windows snap / portrait layouts keep the terminal usable. */
-@media (max-width: 760px) {
-  .mode-pill {
-    display: none;
-  }
-
-  .menu-row {
-    padding-inline: 4px;
-    overflow: hidden;
-  }
-
-  .menu-left {
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .menu-left::-webkit-scrollbar {
-    display: none;
-  }
-
-  .menu-item {
-    min-width: 0;
-    padding-inline: 8px;
-    flex: 0 0 auto;
-  }
-
-  .workspace {
-    grid-template-columns: clamp(128px, 34vw, 180px) minmax(0, 1fr);
-    gap: 4px;
-    padding: 4px;
-  }
-
-  .workspace.connections-collapsed {
-    grid-template-columns: 48px minmax(0, 1fr);
-  }
-
-  .workspace.connections-hidden {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-
-  .servers-panel .panel-header {
-    padding-inline: 7px;
-  }
-
-  .servers-panel .left-tabbar {
-    padding-inline: 5px;
-  }
-
-  .servers-panel .left-tab {
-    padding-inline: 6px;
-  }
-
-  .content-header {
-    padding-inline: 10px;
-  }
-
-  .terminal-session-label,
-  .terminal-header-separator {
-    display: none;
-  }
-
-  .terminal-session-header .status-pill {
-    padding-inline: 7px;
-  }
-
-  .terminal-pane {
-    padding: 6px;
-  }
-
-  .terminal-pane .xterm {
-    padding-right: 10px;
-  }
-
-  .statusbar {
-    gap: 6px;
-    padding-inline: 7px;
-  }
-
-  .statusbar-identity {
-    display: none;
-  }
-
-  .admin-mode-row {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .admin-mode-button {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-}
-
-@media (max-width: 520px) {
-  .toolbar {
-    gap: 3px;
-    padding-inline: 4px;
-  }
-
-  .toolbar-global-actions {
-    padding-left: 3px;
-  }
-
-  .global-terminal-button {
-    min-width: 52px;
-    max-width: 58px;
-  }
-
-  .tool-button {
-    min-width: 62px;
-  }
-
-  .terminal-search-count {
-    display: none;
-  }
-
-  .terminal-tab {
-    min-width: 78px;
-  }
-
-  .live-console {
-    right: 6px;
-    left: 6px;
-    bottom: 36px;
-  }
-}
-
-/* Short floating/snap windows use less chrome and give the terminal more rows. */
-@media (max-height: 620px) {
-  .app-shell {
-    grid-template-rows: 28px 60px minmax(0, 1fr) 31px;
-  }
-
-  .toolbar {
-    min-height: 59px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-
-  .toolbar-panel,
-  .toolbar-global-actions {
-    min-height: 50px;
-  }
-
-  .tool-button {
-    height: 50px;
-    padding-top: 3px;
-    padding-bottom: 3px;
-  }
-
-  .tool-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .statusbar {
-    min-height: 31px;
-  }
-
-  .live-console {
-    bottom: 34px;
-  }
-
-  .live-console.is-open .live-console-panel {
-    max-height: calc(100vh - 100px);
-  }
-}
-
-@media (max-height: 460px) {
-  .app-shell {
-    grid-template-rows: 26px 50px minmax(0, 1fr) 28px;
-  }
-
-  .toolbar {
-    min-height: 49px;
-    padding-block: 2px;
-  }
-
-  .toolbar-panel,
-  .toolbar-global-actions {
-    min-height: 44px;
-  }
-
-  .tool-button {
-    height: 44px;
-    min-width: 58px;
-    padding: 2px 5px;
-    font-size: 10px;
-  }
-
-  .tool-icon {
-    width: 17px;
-    height: 17px;
-  }
-
-  .terminal-session-header {
-    min-height: 36px;
-    padding-block: 5px;
-  }
-
-  .statusbar {
-    min-height: 28px;
-    font-size: 11px;
-  }
-
-  .live-console {
-    bottom: 30px;
-  }
-}
-
-
-/* Advance Terminal V6 - Terminal Profiles */
-#tool-new-terminal-profile {
-  --tool-accent: #a78bfa;
-  --tool-tint: rgba(167, 139, 250, 0.12);
-}
-
-#tool-settings-terminal-profiles {
-  --tool-accent: #a78bfa;
-  --tool-tint: rgba(167, 139, 250, 0.12);
-}
-
-.terminal-profile-quick-menu {
-  position: fixed;
-  z-index: 95;
-  width: min(320px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 130px));
-  overflow: auto;
-  padding: 6px;
-  border: 1px solid var(--win-border-dark);
-  border-radius: 6px;
-  background: var(--win-panel, #ffffff);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-}
-
-
-.quick-actions-menu {
-  width: min(390px, calc(100vw - 24px));
-}
-
-.quick-actions-item {
-  min-height: 52px;
-}
-
-.quick-actions-item .terminal-profile-quick-icon {
-  color: var(--win-blue);
-}
-
-.quick-actions-hint {
-  color: var(--win-muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.quick-menu-button[aria-expanded="true"] {
-  background: var(--win-blue-light);
-  border-color: rgba(88, 166, 255, 0.28);
-}
-
-@media (max-width: 560px) {
-  .quick-actions-menu {
-    width: min(340px, calc(100vw - 16px));
-  }
-
-  .quick-actions-hint {
-    display: none;
-  }
-
-  .quick-actions-item {
-    grid-template-columns: 34px minmax(0, 1fr);
-  }
-}
-
-.terminal-profile-quick-item {
-  width: 100%;
-  min-height: 46px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--win-text);
-  padding: 7px 9px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  text-align: left;
-  cursor: default;
-}
-
-.terminal-profile-quick-item:hover,
-.terminal-profile-quick-item:focus-visible {
-  background: var(--win-blue-light);
-  outline: none;
-}
-
-.terminal-profile-quick-icon,
-.terminal-profile-list-icon {
-  display: inline-grid;
-  place-items: center;
-  min-width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  border: 1px solid currentColor;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.terminal-profile-quick-main,
-.terminal-profile-list-main {
-  min-width: 0;
-}
-
-.terminal-profile-quick-main strong,
-.terminal-profile-list-main strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-profile-quick-main small,
-.terminal-profile-list-main small {
-  display: block;
-  margin-top: 2px;
-  color: var(--win-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-profile-quick-default {
-  color: var(--win-muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.terminal-profiles-manager {
-  display: grid;
-  grid-template-columns: minmax(230px, 0.72fr) minmax(420px, 1.28fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.terminal-profile-list-panel,
-.terminal-profile-editor {
-  min-width: 0;
-  border: 1px solid var(--win-border);
-  border-radius: 6px;
-  background: var(--win-panel-soft);
-  padding: 12px;
-}
-
-.terminal-profile-list {
-  display: grid;
-  gap: 6px;
-  max-height: 520px;
-  overflow: auto;
-  margin-top: 8px;
-}
-
-.terminal-profile-list-item {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--win-text);
-  padding: 8px;
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-}
-
-.terminal-profile-list-item:hover {
-  background: var(--win-blue-light);
-}
-
-.terminal-profile-list-item.active {
-  border-color: var(--win-blue);
-  background: var(--win-blue-light);
-}
-
-.terminal-profile-default-badge {
-  color: var(--win-muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.terminal-profile-list-buttons,
-.terminal-profile-editor-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.terminal-profile-color-row {
-  display: grid;
-  grid-template-columns: 52px minmax(90px, 1fr);
-  gap: 8px;
-  align-items: center;
-}
-
-.terminal-profile-color-row input[type="color"] {
-  width: 52px;
-  padding: 3px;
-}
-
-.terminal-profile-default-row {
-  padding-top: 4px;
-}
-
-.terminal-profile-detection-results {
-  margin-top: 12px;
-  border: 1px solid var(--win-border);
-  border-radius: 5px;
-  overflow: hidden;
-}
-
-.terminal-profile-detection-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.4fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  border-top: 1px solid var(--win-border);
-  background: var(--win-panel-soft);
-}
-
-.terminal-profile-detection-row:first-child {
-  border-top: 0;
-}
-
-.terminal-profile-detection-row code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.terminal-profile-detection-row.unavailable {
-  opacity: 0.62;
-}
-
-.local-add-only.hidden {
-  display: none;
-}
-
-@media (max-width: 940px) {
-  .terminal-profiles-manager {
-    grid-template-columns: 1fr;
-  }
-
-  .terminal-profile-list {
-    max-height: 260px;
-  }
-}
-
-@media (max-width: 620px) {
-  .terminal-profile-detection-row {
-    grid-template-columns: 1fr auto;
-  }
-
-  .terminal-profile-detection-row code {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-}
-
-
-/* Advance Terminal v6.1 — Command Palette */
-#tool-command-palette {
-  --tool-accent: #8b5cf6;
-  --tool-tint: rgba(139, 92, 246, 0.11);
-}
-
-.command-palette-modal {
-  z-index: 95;
-  place-items: start center;
-  padding: clamp(38px, 10vh, 92px) 14px 24px;
-  background: rgba(0, 0, 0, 0.34);
-}
-
-.command-palette-box {
-  width: min(780px, calc(100vw - 28px));
-  max-height: min(720px, calc(100vh - 76px));
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--win-panel);
-  color: var(--win-text);
-  border: 1px solid var(--win-border-dark);
-  border-radius: 10px;
-  box-shadow: 0 22px 65px rgba(0, 0, 0, 0.24);
-}
-
-.command-palette-header {
-  min-height: 66px;
-  padding: 13px 16px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.command-palette-header h2 {
-  margin: 1px 0 0;
-  font-size: 19px;
-  font-weight: 650;
-}
-
-.command-palette-shortcut {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-  border: 1px solid var(--win-border);
-  border-bottom-color: var(--win-border-dark);
-  border-radius: 5px;
-  background: var(--win-panel-soft);
-  color: var(--win-muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.command-palette-search-row {
-  margin: 0 14px;
-  min-height: 46px;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 34px;
-  align-items: center;
-  border: 1px solid var(--win-blue);
-  border-radius: 7px;
-  background: var(--win-panel);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--win-blue) 22%, transparent);
-}
-
-.command-palette-search-icon {
-  text-align: center;
-  color: var(--win-muted);
-  font-size: 19px;
-  line-height: 1;
-}
-
-#command-palette-input {
-  width: 100%;
-  height: 42px;
-  min-width: 0;
-  padding: 0 4px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--win-text);
-  font-size: 15px;
-}
-
-#command-palette-input::placeholder {
-  color: var(--win-muted);
-  opacity: 0.82;
-}
-
-.command-palette-close {
-  width: 28px;
-  height: 28px;
-  margin-right: 3px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--win-muted);
-  font-size: 21px;
-  line-height: 26px;
-  cursor: default;
-}
-
-.command-palette-close:hover {
-  background: var(--win-panel-soft);
-  color: var(--win-text);
-}
-
-.command-palette-meta {
-  min-height: 35px;
-  padding: 7px 16px 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 1px solid var(--win-border);
-  color: var(--win-muted);
-  font-size: 11px;
-}
-
-.command-palette-meta > span:last-child {
-  white-space: nowrap;
-}
-
-.command-palette-meta kbd,
-.command-palette-result-meta kbd {
-  display: inline-flex;
-  min-width: 20px;
-  min-height: 20px;
-  padding: 1px 5px;
-  margin: 0 1px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--win-border);
-  border-bottom-color: var(--win-border-dark);
-  border-radius: 4px;
-  background: var(--win-panel-soft);
-  color: var(--win-muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.command-palette-results {
-  min-height: 120px;
-  max-height: min(510px, calc(100vh - 230px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 6px;
-}
-
-.command-palette-result {
-  width: 100%;
-  min-height: 54px;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 9px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--win-text);
-  text-align: left;
-  cursor: default;
-}
-
-.command-palette-result:hover,
-.command-palette-result.selected {
-  background: var(--win-blue-light);
-  border-color: color-mix(in srgb, var(--win-blue) 32%, transparent);
-}
-
-.command-palette-result.selected {
-  box-shadow: inset 3px 0 0 var(--win-blue);
-}
-
-.command-palette-result-icon {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border: 1px solid var(--win-border);
-  border-radius: 7px;
-  background: var(--win-panel-soft);
-  color: var(--win-text);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-  white-space: nowrap;
-}
-
-.command-palette-result-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.command-palette-result-title-row {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.command-palette-result-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.command-palette-recent {
-  flex: 0 0 auto;
-  padding: 1px 5px;
-  border: 1px solid var(--win-border);
-  border-radius: 999px;
-  color: var(--win-muted);
-  background: var(--win-panel-soft);
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.35px;
-}
-
-.command-palette-result-subtitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--win-muted);
-  font-size: 11px;
-}
-
-.command-palette-result-meta {
-  max-width: 190px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  color: var(--win-muted);
-  font-size: 10px;
-}
-
-.command-palette-result-category {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.command-palette-empty {
-  min-height: 150px;
-  padding: 32px 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  color: var(--win-muted);
-  text-align: center;
-}
-
-.command-palette-empty strong {
-  color: var(--win-text);
-  font-size: 14px;
-}
-
-.command-palette-empty span {
-  max-width: 460px;
-  line-height: 1.45;
-}
-
-:root[data-theme="dark"] .command-palette-modal {
-  background: rgba(0, 0, 0, 0.52);
-}
-
-:root[data-theme="dark"] .command-palette-box {
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.52);
-}
-
-@media (max-width: 640px) {
-  .command-palette-modal {
-    padding: 12px 8px;
-  }
-
-  .command-palette-box {
-    width: calc(100vw - 16px);
-    max-height: calc(100vh - 24px);
-    border-radius: 7px;
-  }
-
-  .command-palette-header {
-    min-height: 58px;
-    padding: 10px 12px 8px;
-  }
-
-  .command-palette-search-row {
-    margin: 0 10px;
-  }
-
-  .command-palette-meta {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
-  .command-palette-meta > span:last-child {
-    display: none;
-  }
-
-  .command-palette-results {
-    max-height: calc(100vh - 160px);
-  }
-
-  .command-palette-result {
-    grid-template-columns: 36px minmax(0, 1fr);
-  }
-
-  .command-palette-result-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .command-palette-result-meta {
-    display: none;
-  }
-}
-
-@media (max-height: 540px) {
-  .command-palette-modal {
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-
-  .command-palette-box {
-    max-height: calc(100vh - 20px);
-  }
-
-  .command-palette-header {
-    min-height: 50px;
-    padding-top: 8px;
-    padding-bottom: 6px;
-  }
-
-  .command-palette-results {
-    max-height: calc(100vh - 150px);
-  }
-}
-
-
-
-/* Advance Terminal v6.2 — Workspaces */
-#tool-workspaces,
-#tool-settings-workspaces {
-  --tool-accent: #0f766e;
-  --tool-tint: rgba(15, 118, 110, 0.11);
-}
-
-.workspace-quick-menu {
-  width: min(360px, calc(100vw - 24px));
-}
-
-.workspace-quick-section-label {
-  padding: 7px 9px 5px;
-  color: var(--win-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.workspace-quick-divider {
-  height: 1px;
-  margin: 5px 4px;
-  background: var(--win-border);
-}
-
-.workspace-quick-action {
-  grid-template-columns: 34px minmax(0, 1fr);
-}
-
-.workspace-quick-item .terminal-profile-quick-icon {
-  color: #0f766e;
-}
-
-.workspace-manager {
-  display: grid;
-  grid-template-columns: minmax(230px, 0.72fr) minmax(440px, 1.28fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.workspace-list-panel,
-.workspace-editor {
-  min-width: 0;
-  border: 1px solid var(--win-border);
-  border-radius: 6px;
-  background: var(--win-panel-soft);
-  padding: 12px;
-}
-
-.workspace-list {
-  display: grid;
-  gap: 6px;
-  max-height: 520px;
-  overflow: auto;
-  margin-top: 8px;
-}
-
-.workspace-list-item {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--win-text);
-  padding: 9px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  text-align: left;
-}
-
-.workspace-list-item:hover {
-  background: var(--win-blue-light);
-}
-
-.workspace-list-item.active {
-  border-color: var(--win-blue);
-  background: var(--win-blue-light);
-}
-
-.workspace-list-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid currentColor;
-  border-radius: 6px;
-  color: #0f766e;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
-.workspace-list-main {
-  min-width: 0;
-}
-
-.workspace-list-main strong,
-.workspace-list-main small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-list-main small {
-  margin-top: 2px;
-  color: var(--win-muted);
-}
-
-.workspace-startup-badge {
-  color: var(--win-muted);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.workspace-startup-badge.missing {
-  color: var(--win-danger, #b42318);
-}
-
-.workspace-list-buttons,
-.workspace-editor-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.workspace-list-buttons {
-  margin-top: 10px;
-}
-
-.workspace-option-row {
-  margin: 0;
-}
-
-.workspace-summary {
-  margin-top: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--win-border);
-  border-radius: 5px;
-  background: var(--win-panel);
-  color: var(--win-muted);
-  line-height: 1.45;
-}
-
-.workspace-summary strong {
-  color: var(--win-text);
-}
-
-.workspace-session-block {
-  margin-top: 14px;
-}
-
-.workspace-session-list {
-  display: grid;
-  gap: 6px;
-  max-height: 280px;
-  overflow: auto;
-  margin-top: 8px;
-}
-
-.workspace-session-row {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: center;
-  padding: 8px 9px;
-  border: 1px solid var(--win-border);
-  border-radius: 5px;
-  background: var(--win-panel);
-}
-
-.workspace-session-index {
-  display: inline-grid;
-  place-items: center;
-  min-height: 28px;
-  border-radius: 5px;
-  background: var(--win-panel-soft);
-  color: var(--win-muted);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.workspace-session-copy {
-  min-width: 0;
-}
-
-.workspace-session-copy strong,
-.workspace-session-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-session-copy small {
-  margin-top: 2px;
-  color: var(--win-muted);
-}
-
-.workspace-session-state {
-  color: var(--win-muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.workspace-session-state.missing {
-  color: var(--win-danger, #b42318);
-}
-
-.workspace-session-empty {
-  padding: 14px;
-  border: 1px dashed var(--win-border);
-  border-radius: 5px;
-  color: var(--win-muted);
-  text-align: center;
-}
-
-.workspace-editor-actions {
-  margin-top: 14px;
-}
-
-.workspace-security-note {
-  margin-top: 14px;
-}
-
-body.workspace-restore-active #tool-workspaces {
-  opacity: 0.68;
-  pointer-events: none;
-}
-
-@media (max-width: 940px) {
-  .workspace-manager {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-list {
-    max-height: 240px;
-  }
-}
-
-@media (max-width: 620px) {
-  .workspace-session-row {
-    grid-template-columns: 34px minmax(0, 1fr);
-  }
-
-  .workspace-session-state {
-    grid-column: 2;
-  }
-}
-
-/* Advance Terminal v6.3 — split terminal panes */
-.terminal-split-group {
-  position: absolute;
-  inset: 0;
-  display: none;
-  min-width: 0;
-  min-height: 0;
-  background: #0c0c0c;
-  overflow: hidden;
-}
-
-.terminal-split-group.active {
-  display: block;
-}
-
-.terminal-split-node {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  overflow: hidden;
-  background: #0c0c0c;
-}
-
-.terminal-split-leaf {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #0c0c0c;
-  border: 1px solid transparent;
-  box-sizing: border-box;
-}
-
-.terminal-split-group.is-split .terminal-split-leaf:has(.terminal-pane.active) {
-  border-color: color-mix(in srgb, var(--win-blue) 72%, transparent);
-}
-
-.terminal-split-pane-header {
-  display: none;
-  flex: 0 0 27px;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-  padding: 0 3px 0 8px;
-  border-bottom: 1px solid #303030;
-  background: #171717;
-  color: #d8d8d8;
-}
-
-.terminal-split-group.is-split .terminal-split-pane-header {
-  display: flex;
-}
-
-.terminal-split-pane-label {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: default;
-}
-
-.terminal-split-pane-close {
-  width: 23px;
-  height: 23px;
-  flex: 0 0 23px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: #bdbdbd;
-  font-size: 17px;
-  line-height: 1;
-  cursor: default;
-}
-
-.terminal-split-pane-close:hover,
-.terminal-split-pane-close:focus-visible {
-  background: rgba(232, 17, 35, 0.2);
-  color: #ffffff;
-  outline: none;
-}
-
-.terminal-split-leaf > .terminal-pane {
-  display: block !important;
-  width: 100%;
-  height: auto;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 0;
-}
-
-.terminal-split-divider {
-  position: relative;
-  z-index: 15;
-  background: #303030;
-  touch-action: none;
-  user-select: none;
-}
-
-.terminal-split-divider-row {
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-}
-
-.terminal-split-divider-column {
-  width: 100%;
-  height: 6px;
-  cursor: row-resize;
-}
-
-.terminal-split-divider:hover,
-body.terminal-split-resizing .terminal-split-divider {
-  background: var(--win-blue);
-}
-
-body.terminal-split-resizing {
-  cursor: col-resize;
-  user-select: none;
-}
-
-.terminal-split-node.terminal-split-column:has(> .terminal-split-divider-column:hover),
-body.terminal-split-resizing .terminal-split-node.terminal-split-column {
-  cursor: row-resize;
-}
-
-.terminal-tab-pane-count {
-  min-width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-  display: inline-grid;
-  place-items: center;
-  margin-left: 2px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--win-blue) 18%, transparent);
-  color: var(--terminal-tab-active-text);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.terminal-tab-split-button {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--terminal-tab-text);
-  font-size: 17px;
-  line-height: 1;
-  cursor: default;
-}
-
-.terminal-tab-split-button:hover,
-.terminal-tab-split-button[aria-expanded="true"] {
-  background: var(--terminal-tab-hover-bg);
-  color: var(--terminal-tab-active-text);
-}
-
-.terminal-tab-split-button:focus-visible {
-  outline: 2px solid var(--terminal-tab-focus);
-  outline-offset: -2px;
-}
-
-.terminal-tab-split-button:disabled {
-  opacity: 0.36;
-}
-
-.terminal-split-picker-menu {
-  width: min(420px, calc(100vw - 16px));
-  max-height: min(640px, calc(100vh - 16px));
-  overflow-y: auto;
-}
-
-.terminal-split-picker-title {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--win-panel);
-}
-
-.terminal-split-direction-row {
-  position: sticky;
-  top: 29px;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 7px 9px 9px;
-  border-bottom: 1px solid var(--win-border);
-  background: var(--win-panel);
-}
-
-.terminal-split-direction-button,
-.terminal-split-pane-action {
-  min-height: 31px;
-  padding: 5px 9px;
-  border: 1px solid var(--win-border);
-  border-radius: 4px;
-  background: var(--win-panel-soft);
-  color: var(--win-text);
-  font: inherit;
-  font-size: 12px;
-  cursor: default;
-}
-
-.terminal-split-direction-button.active {
-  border-color: var(--win-blue);
-  background: color-mix(in srgb, var(--win-blue) 14%, var(--win-panel-soft));
-  color: var(--win-blue);
-  font-weight: 700;
-}
-
-.terminal-split-direction-button:hover,
-.terminal-split-direction-button:focus-visible,
-.terminal-split-pane-action:hover,
-.terminal-split-pane-action:focus-visible {
-  border-color: var(--win-blue);
-  outline: none;
-}
-
-.terminal-split-pane-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 5px;
-  padding: 8px;
-}
-
-.terminal-split-pane-action-danger {
-  color: var(--win-danger);
-}
-
-@media (max-width: 760px) {
-  .terminal-split-group.is-split .terminal-split-pane-header {
-    flex-basis: 24px;
-  }
-
-  .terminal-split-pane-header {
-    padding-left: 5px;
-  }
-
-}
-
-
-
-/* V6.4 Advanced Tabs */
+/* v5 lightweight tab context menu. No background polling or settings writes. */
+.terminal-tab.is-pinned .terminal-tab-close { opacity: 0.25; cursor: not-allowed; }
+.terminal-tab-pin-icon { flex: 0 0 auto; font-size: 11px; line-height: 1; margin-right: 4px; }
 .terminal-tab.has-custom-color .terminal-tab-inner {
-  box-shadow: inset 0 3px 0 var(--terminal-tab-custom-color);
+  box-shadow: inset 0 -3px var(--custom-tab-color);
 }
-
-.terminal-tab.has-custom-color .terminal-tab-icon {
-  background: var(--terminal-tab-custom-color);
-}
-
-.terminal-tab-pin {
-  flex: 0 0 auto;
-  padding: 1px 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--win-blue) 13%, transparent);
-  color: var(--win-blue);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1.35;
-  pointer-events: none;
-}
-
-.terminal-tab.pinned .terminal-tab-inner {
-  padding-right: 10px;
-}
-
 .terminal-tab-context-menu {
   position: fixed;
-  z-index: 3600;
+  z-index: 4000;
   width: min(250px, calc(100vw - 16px));
-  max-height: min(520px, calc(100vh - 16px));
-  padding: 6px;
-  overflow: auto;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 7px;
   border: 1px solid var(--win-border-dark);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--win-panel);
   color: var(--win-text);
-  box-shadow: var(--shadow);
-}
-
-.terminal-tab-context-heading {
-  padding: 6px 8px 7px;
-  overflow: hidden;
-  color: var(--win-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-tab-context-item {
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  text-align: left;
-  cursor: default;
-}
-
-.terminal-tab-context-item:hover:not(:disabled),
-.terminal-tab-context-item:focus-visible:not(:disabled) {
-  outline: none;
-  border-color: color-mix(in srgb, var(--win-blue) 30%, transparent);
-  background: color-mix(in srgb, var(--win-blue) 10%, var(--win-panel));
-}
-
-.terminal-tab-context-item:disabled {
-  opacity: 0.48;
-}
-
-.terminal-tab-context-item.danger:not(:disabled) {
-  color: var(--win-red, #c62828);
-}
-
-.terminal-tab-context-divider {
-  height: 1px;
-  margin: 5px 3px;
-  background: var(--win-border);
-}
-
-.terminal-tab-context-color-row {
-  min-height: 36px;
-  padding: 4px 8px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px auto;
-  align-items: center;
-  gap: 8px;
-  color: var(--win-text);
+  box-shadow: 0 14px 38px rgba(0,0,0,0.25);
   font-size: 12px;
 }
-
-.terminal-tab-context-color-row input[type="color"] {
-  width: 32px;
-  height: 26px;
-  padding: 1px;
-  border: 1px solid var(--win-border-dark);
+.terminal-tab-context-heading {
+  font-weight: 600;
+  padding: 8px;
+  border-bottom: 1px solid var(--win-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-tab-context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
   border-radius: 5px;
-  background: var(--win-panel);
+  background: transparent;
+  color: inherit;
+  padding: 8px;
+  font: inherit;
   cursor: pointer;
 }
+.terminal-tab-context-item:hover:not(:disabled),
+.terminal-tab-context-item:focus-visible {
+  background: var(--win-blue-light);
+  outline: none;
+}
+.terminal-tab-context-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.terminal-tab-context-item.danger { color: var(--win-danger); }
+.terminal-tab-context-divider { height: 1px; background: var(--win-border); margin: 6px 3px; }
+.terminal-tab-context-color-row { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 7px; }
+.terminal-tab-context-color-row input[type="color"] { width: 36px; height: 26px; border: 0; background: none; cursor: pointer; }
+.terminal-tab-context-color-row button { padding: 5px 8px; background: var(--win-panel-soft); border: 1px solid var(--win-border); color: var(--win-text); border-radius: 4px; cursor: pointer; }
+.terminal-tab-rename-overlay { position: fixed; inset: 0; z-index: 4100; display: grid; place-items: center; background: rgba(0,0,0,0.4); }
+.terminal-tab-rename-dialog { width: min(340px, calc(100vw - 32px)); padding: 18px; background: var(--win-panel); color: var(--win-text); border: 1px solid var(--win-border); border-radius: 9px; box-shadow: var(--shadow); }
+.terminal-tab-rename-dialog label { display: block; font-weight: 600; margin-bottom: 12px; }
+.terminal-tab-rename-input { display: block; width: 100%; box-sizing: border-box; padding: 9px; margin-top: 8px; border: 1px solid var(--win-border-dark); background: var(--win-panel-soft); color: var(--win-text); border-radius: 5px; }
+.terminal-tab-rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.terminal-tab-rename-actions button { padding: 7px 14px; border: 1px solid var(--win-border); border-radius: 5px; background: var(--win-panel-soft); color: var(--win-text); cursor: pointer; }
+.terminal-tab-rename-actions button.primary { background: var(--win-blue); color: white; border-color: var(--win-blue); }
 
-.terminal-tab-context-clear-color {
-  min-height: 26px;
-  padding: 3px 7px;
-  border: 1px solid var(--win-border);
-  border-radius: 5px;
+/* Lightweight per-tab activity marker: composited opacity/rotation only.
+   No JS polling or re-rendering the terminal strip on every output chunk. */
+.terminal-tab-work-indicator {
+  display: none;
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  margin-left: 1px;
+  border: 2px solid color-mix(in srgb, var(--terminal-tab-text) 30%, transparent);
+  border-top-color: #3585ec;
+  border-radius: 50%;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.terminal-tab.is-working .terminal-tab-work-indicator {
+  display: inline-block;
+  animation: advance-terminal-tab-working 850ms linear infinite;
+}
+@keyframes advance-terminal-tab-working {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .terminal-tab.is-working .terminal-tab-work-indicator {
+    animation: none;
+    border-color: #3585ec;
+  }
+}
+
+
+/* V7 flat workspace layout: maintain existing terminal, tab and connection behavior. */
+.workspace {
+  gap: 0;
+  padding: 0;
+}
+
+.workspace .servers-panel,
+.workspace .content-panel {
+  border: 0;
+  box-shadow: none;
+}
+
+.workspace .servers-panel {
+  border-right: 1px solid var(--win-border);
+}
+
+/* Left panel: tabs flush to top, with the existing collapse control in the row. */
+.servers-panel .left-tabbar {
+  position: relative;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 34px 0 0;
+  align-items: stretch;
   background: var(--win-panel);
+  border-bottom: 1px solid var(--win-border);
+  isolation: auto;
+}
+
+.servers-panel .left-tab {
+  height: 39px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--win-muted);
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.servers-panel .left-tab::before,
+.servers-panel .left-tab::after {
+  display: none;
+}
+
+.servers-panel .left-tab:hover {
+  background: var(--win-panel-soft);
   color: var(--win-text);
 }
 
-.terminal-tab-context-clear-color:hover,
-.terminal-tab-context-clear-color:focus-visible {
-  outline: none;
-  border-color: var(--win-blue);
-}
-
-.terminal-tab-rename-box {
-  width: min(440px, calc(100vw - 24px));
-}
-
-.terminal-tab-rename-box input {
-  width: 100%;
-  margin-top: 8px;
-}
-
-@media (max-width: 700px) {
-  .terminal-tab-pin {
-    display: none;
-  }
-
-  .terminal-tab.has-custom-color .terminal-tab-inner {
-    box-shadow: inset 0 2px 0 var(--terminal-tab-custom-color);
-  }
-}
-
-
-/* Advance Terminal v6.5 — Toolbar Builder v2 */
-.terminal-action-drag-help {
-  color: var(--win-muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.terminal-action-list-item {
-  cursor: grab;
-}
-
-.terminal-action-list-item:active {
-  cursor: grabbing;
-}
-
-.terminal-action-list-item.dragging {
-  opacity: 0.45;
-}
-
-.terminal-action-list-item.drag-over {
-  border-color: var(--win-blue);
+.servers-panel .left-tab.active {
+  background: transparent;
+  color: var(--win-text);
   box-shadow: inset 0 -2px 0 var(--win-blue);
 }
 
-.terminal-action-list-separator-icon {
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--win-muted);
+.servers-panel .left-tab:focus-visible {
+  outline: 2px solid var(--win-blue);
+  outline-offset: -2px;
 }
 
-.field-help.field-warning,
-.field-warning {
-  color: #c42b1c;
-}
-
-.dynamic-terminal-separator {
-  align-self: center;
-  height: 44px;
-  margin-inline: 5px;
-}
-
-.terminal-toolbar-button-group {
-  display: inline-flex;
-  align-items: stretch;
-  min-height: 60px;
-  padding: 0;
-  border: 1px solid var(--win-border);
-  border-radius: 6px;
-  overflow: hidden;
-  flex: 0 0 auto;
-}
-
-.terminal-toolbar-button-group .tool-button {
-  min-width: 62px;
-  border-radius: 0;
-  border-width: 0 1px 0 0;
-}
-
-.terminal-toolbar-button-group .tool-button:last-child {
-  border-right: 0;
-}
-
-.terminal-toolbar-dropdown {
-  display: inline-flex;
-  align-items: stretch;
-  min-height: 60px;
-  flex: 0 0 auto;
-}
-
-.terminal-toolbar-dropdown-toggle {
-  position: relative;
-}
-
-.terminal-toolbar-dropdown-toggle.active {
-  background: var(--win-blue-light);
-  border-color: #99d1ff;
-}
-
-.terminal-toolbar-dropdown-menu {
-  position: fixed;
-  z-index: 12000;
-  width: min(360px, calc(100vw - 16px));
-  max-height: min(480px, calc(100vh - 16px));
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--win-border-dark);
-  border-radius: 7px;
-  background: var(--win-panel);
-  color: var(--win-text);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
-}
-
-.terminal-toolbar-dropdown-heading {
-  padding: 7px 9px 8px;
-  color: var(--win-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--win-border);
-  margin-bottom: 4px;
-}
-
-.terminal-toolbar-dropdown-item {
-  width: 100%;
-  min-height: 38px;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: 5px;
+.servers-panel .panel-collapse-button {
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  width: 26px;
+  height: 26px;
   background: transparent;
-  color: var(--win-text);
-  text-align: left;
+  border: 0;
 }
 
-.terminal-toolbar-dropdown-item:hover {
-  background: var(--win-blue-light);
-  border-color: #99d1ff;
+.servers-panel.is-collapsed .left-tabbar {
+  display: flex;
+  justify-content: center;
+  padding: 0;
 }
 
-.terminal-toolbar-dropdown-item:disabled,
-.terminal-toolbar-dropdown-item.is-busy {
-  opacity: 0.6;
+.servers-panel.is-collapsed .left-tabbar .left-tab,
+.servers-panel.is-collapsed .left-tab-panel {
+  display: none;
 }
 
-.terminal-toolbar-dropdown-item-icon {
-  width: 24px;
-  height: 24px;
+.servers-panel.is-collapsed .panel-collapse-button {
+  position: static;
+  margin: 7px auto;
+}
+
+/* Group selection lives in a lightweight popover anchored to search. */
+.connection-search-row .search-input {
+  padding-right: 39px;
+}
+
+.connection-search-row .connection-group-filter-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  right: 3px;
   display: grid;
   place-items: center;
-  color: var(--tool-accent, var(--win-blue));
+  width: 27px;
+  height: 26px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--win-muted);
+  cursor: pointer;
 }
 
-.terminal-toolbar-dropdown-item-icon svg {
-  width: 20px;
-  height: 20px;
+.connection-group-filter-toggle svg {
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
+  stroke-width: 1.7;
   stroke-linejoin: round;
 }
 
-.terminal-toolbar-dropdown-item-label {
+.connection-search-row .connection-group-filter-toggle:hover,
+.connection-search-row .connection-group-filter-toggle[aria-expanded="true"] {
+  background: var(--win-blue-light);
+  color: var(--win-blue);
+}
+
+.connection-search-row .connection-group-filter-toggle:focus-visible {
+  outline: 2px solid var(--win-blue);
+  outline-offset: -2px;
+}
+
+.connection-search-row .connection-group-filter-row {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--win-border);
+  border-radius: 7px;
+  background: var(--win-panel);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.22);
+}
+
+.connection-search-row .connection-group-filter-row[hidden] {
+  display: none;
+}
+
+.connection-group-filter-label {
+  color: var(--win-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .servers-panel .left-tab {
+    transition: none;
+  }
+}
+
+/* V7 browser-style location navigation; no terminal sessions are restarted by refresh. */
+.terminal-session-header .terminal-session-summary {
+  gap: 8px;
+}
+.terminal-navigation-controls {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 9px;
+  margin-right: 3px;
+  border-right: 1px solid var(--win-border);
+}
+.terminal-navigation-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--win-text);
+  cursor: pointer;
+  transition: background-color 110ms ease;
+}
+.terminal-navigation-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.terminal-navigation-button:hover:not(:disabled) {
+  background: var(--win-blue-light);
+  color: var(--win-blue);
+}
+.terminal-navigation-button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+.terminal-navigation-button:focus-visible {
+  outline: 2px solid var(--win-blue);
+  outline-offset: -2px;
+}
+.terminal-location-prefix {
+  color: var(--win-muted);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.terminal-session-header .terminal-location {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.terminal-toolbar-dropdown-item kbd {
-  color: var(--win-muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
+/* Restore the original browser-tab visual treatment for Servers / Commands.
+   Keep the flush sidebar, compact filter icon and flat global layout. */
+.servers-panel .left-tabbar {
+  height: 42px;
+  min-height: 42px;
+  padding: 7px 34px 0 10px;
+  align-items: flex-end;
+  background: var(--sidebar-main-tab-strip);
+  border-bottom: 1px solid var(--win-border);
+  isolation: isolate;
+}
+.servers-panel .left-tab {
+  height: 34px;
+  border-radius: 10px 10px 0 0;
+  background-color: transparent;
+  color: var(--sidebar-main-tab-text);
+  box-shadow: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.servers-panel .left-tab::before,
+.servers-panel .left-tab::after {
+  display: block;
+}
+.servers-panel .left-tab:hover {
+  background-color: var(--sidebar-main-tab-hover);
+  color: var(--sidebar-main-tab-active-text);
+}
+.servers-panel .left-tab.active {
+  background-color: var(--sidebar-main-tab-active);
+  color: var(--sidebar-main-tab-active-text);
+  box-shadow: 0 2px 0 var(--sidebar-main-tab-active);
+}
+.servers-panel .left-tab:focus-visible {
+  outline: 2px solid var(--win-blue);
+  outline-offset: -2px;
+}
+.servers-panel .panel-collapse-button {
+  top: 9px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .terminal-navigation-button, .servers-panel .left-tab { transition: none; }
+}
+
+
+/* V7 minor visual fix: keep tab strip dark-gray, remove divider, preserve spacing. */
+:root[data-theme="dark"] .content-panel,
+:root[data-theme="dark"] #terminal-view {
+  background: #242424;
+}
+
+:root[data-theme="dark"] .terminal-tabs {
+  background: #242424;
+  border-bottom: 0;
+}
+
+:root[data-theme="dark"] .terminal-session-header {
+  background: #242424;
+  border-bottom: 0;
+  padding-top: 8px;
+}
+
+:root[data-theme="dark"] .terminal-session-header .terminal-session-summary,
+:root[data-theme="dark"] .terminal-session-header .header-actions {
+  align-self: center;
+}
+
+:root[data-theme="dark"] .terminal-host,
+:root[data-theme="dark"] .terminal-empty {
+  background: #000000;
+}
+
+
+/* ================================================================
+   V7 Clean Workspace — Warp-inspired appearance, V7-native actions.
+   Visual only. Does not change renderer events, IPC, SSH, or PTYs.
+   ================================================================ */
+:root[data-theme="dark"] {
+  --win-bg: #090a0b;
+  --win-panel: #101112;
+  --win-panel-soft: #191a1c;
+  --win-border: #25262a;
+  --win-border-dark: #34363b;
+  --win-text: #ececef;
+  --win-muted: #a3a5ac;
+  --win-blue: #20acd8;
+  --win-blue-hover: #168eae;
+  --win-blue-light: #163039;
+}
+
+/* Slim application chrome; all existing menu actions remain clickable. */
+:root[data-theme="dark"] .app-shell {
+  grid-template-rows: 38px 46px minmax(0, 1fr) 28px;
+  background: #0b0b0c;
+}
+:root[data-theme="dark"] .menu-row {
+  background: #111214;
+  border-bottom: 1px solid #222326;
+  padding-inline: 12px;
+}
+:root[data-theme="dark"] .menu-left { gap: 3px; }
+:root[data-theme="dark"] .menu-item {
+  height: 28px;
+  min-width: 0;
+  padding-inline: 11px;
+  border: 0;
+  border-radius: 6px;
+  color: #bcbfc5;
+  transition: background-color 130ms ease, color 130ms ease;
+}
+:root[data-theme="dark"] .menu-item:hover,
+:root[data-theme="dark"] .menu-item.active {
+  background: #24262a;
+  color: #f3f3f5;
+  border: 0;
+}
+:root[data-theme="dark"] .mode-pill { color: #989ca3; font-size: 11px; }
+:root[data-theme="dark"] .mode-dot { width: 7px; height: 7px; box-shadow: none; }
+
+/* Keep V7 toolbar commands, only reduce their visual footprint. */
+:root[data-theme="dark"] .toolbar {
+  height: 46px;
+  min-height: 46px;
+  padding: 3px 10px;
+  background: #111214;
+  border-bottom: 1px solid #242529;
+  gap: 5px;
+}
+:root[data-theme="dark"] .toolbar-panel { min-height: 38px; gap: 3px; align-items: center; }
+:root[data-theme="dark"] .toolbar-global-actions {
+  min-height: 38px;
+  align-items: center;
+  border-left-color: #2a2b30;
+  padding-left: 6px;
+}
+:root[data-theme="dark"] .dynamic-toolbar-actions { align-items: center; gap: 3px; }
+:root[data-theme="dark"] .tool-button {
+  flex: 0 0 auto;
+  min-width: 38px;
+  max-width: none;
+  width: auto;
+  height: 36px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 6px;
+  justify-content: center;
+  gap: 2px;
+  color: #d1d3d8;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+:root[data-theme="dark"] .tool-button:hover { background: #27282d; border-color: transparent; color: #fff; }
+:root[data-theme="dark"] .tool-button:active { background: #34363c; transform: none; }
+:root[data-theme="dark"] .tool-button .tool-icon { width: 19px; height: 19px; }
+/* Only Terminal's toolbar is icon-first. Labels remain in the DOM for assistive tech;
+   native title tooltips remain available. Other menus retain visible labels. */
+:root[data-theme="dark"] .toolbar-panel[data-toolbar-panel="terminal"] .tool-button,
+:root[data-theme="dark"] .toolbar-global-actions .tool-button {
+  width: 38px;
+  padding: 6px;
+  position: relative;
+}
+:root[data-theme="dark"] .toolbar-panel[data-toolbar-panel="terminal"] .tool-button > span:not(.tool-icon),
+:root[data-theme="dark"] .toolbar-global-actions .tool-button > span:not(.tool-icon) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
-
-.terminal-toolbar-dropdown-item.has-custom-color {
-  --tool-accent: var(--tool-accent);
-  border-left-color: var(--tool-border-accent);
+:root[data-theme="dark"] .toolbar-separator { height: 20px; align-self: center; opacity: .48; }
+:root[data-theme="dark"] .global-terminal-button.active {
+  background: #20262d;
+  border-color: transparent;
 }
 
-:root[data-theme="dark"] .terminal-toolbar-dropdown-menu {
-  background: var(--win-panel);
-  border-color: var(--win-border);
+/* One quiet sidebar and a continuous, black terminal canvas. */
+:root[data-theme="dark"] .workspace {
+  grid-template-columns: minmax(210px, 252px) minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  background: #090909;
+}
+:root[data-theme="dark"] .workspace.connections-collapsed { grid-template-columns: 46px minmax(0, 1fr); }
+:root[data-theme="dark"] .workspace.connections-hidden { grid-template-columns: minmax(0, 1fr); }
+:root[data-theme="dark"] .workspace .servers-panel,
+:root[data-theme="dark"] .workspace .content-panel {
+  margin: 0;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-theme="dark"] .workspace .servers-panel {
+  background: #111213;
+  border-right: 1px solid #242528;
+}
+:root[data-theme="dark"] .workspace .content-panel { background: #090909; min-width: 0; }
+
+/* Flat Servers/Commands switch, low contrast and no browser-style shoulders. */
+:root[data-theme="dark"] .servers-panel .left-tabbar {
+  height: 40px;
+  min-height: 40px;
+  padding: 5px 34px 5px 7px;
+  align-items: center;
+  border: 0;
+  background: #111213;
+  isolation: auto;
+}
+:root[data-theme="dark"] .servers-panel .left-tab {
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94969c;
+  box-shadow: none;
+  font-size: 11px;
+}
+:root[data-theme="dark"] .servers-panel .left-tab::before,
+:root[data-theme="dark"] .servers-panel .left-tab::after { display: none; content: none; }
+:root[data-theme="dark"] .servers-panel .left-tab.active {
+  color: #f2f2f4;
+  background: #2b2c30;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .servers-panel .left-tab:hover { background: #232428; color: #f3f4f5; }
+:root[data-theme="dark"] .servers-panel .panel-collapse-button {
+  top: 7px; right: 7px;
+  width: 25px; height: 25px;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+}
+:root[data-theme="dark"] .servers-panel .panel-collapse-button:hover { background: #26272b; }
+:root[data-theme="dark"] .search-row { margin: 5px 9px 8px; }
+:root[data-theme="dark"] .search-input {
+  height: 31px;
+  background: #191a1c;
+  border: 1px solid #292a2e;
+  border-radius: 6px;
+  color: #e9e9eb;
+  font-size: 11px;
+}
+:root[data-theme="dark"] .search-input:focus { border-color: #447586; outline: none; }
+:root[data-theme="dark"] .connection-filter-row {
+  height: 32px;
+  min-height: 32px;
+  align-items: center;
+  padding: 1px 7px;
+  background: #111213;
+  border: 0;
+  isolation: auto;
+}
+:root[data-theme="dark"] .connection-filter-button {
+  height: 29px;
+  border: 0;
+  border-radius: 5px;
+  box-shadow: none;
+  background: transparent;
+  font-size: 11px;
+}
+:root[data-theme="dark"] .connection-filter-button::before,
+:root[data-theme="dark"] .connection-filter-button::after { display: none; content: none; }
+:root[data-theme="dark"] .connection-filter-button.active {
+  background: #252629;
+  box-shadow: none;
+  color: #ededf1;
+}
+:root[data-theme="dark"] .server-card {
+  min-height: 43px;
+  margin: 1px 5px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+}
+:root[data-theme="dark"] .server-card:hover,
+:root[data-theme="dark"] .server-card.selected {
+  background: #242529;
+  border-color: #292b30;
+}
+:root[data-theme="dark"] .server-group-header {
+  margin: 7px 7px 3px;
+  min-height: 22px;
+  padding: 3px 5px 3px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: #1a1b1e;
+  color: #929ba6;
+  letter-spacing: .03em;
+}
+:root[data-theme="dark"] .connect-card-button,
+:root[data-theme="dark"] .command-run-button {
+  padding: 4px 8px;
+  min-height: 24px;
+  border-radius: 5px;
+  font-size: 11px;
+  background: #293b48;
+  border-color: #293b48;
+  color: #e0edf5;
+}
+:root[data-theme="dark"] .connect-card-button:hover,
+:root[data-theme="dark"] .command-run-button:hover {
+  background: #345267;
+  border-color: #345267;
+}
+:root[data-theme="dark"] .add-manage-button {
+  min-height: 32px;
+  border-color: #242528;
+  background: #121314;
+  color: #d0d1d6;
 }
 
-:root[data-theme="dark"] .terminal-toolbar-dropdown-item:hover,
-:root[data-theme="dark"] .terminal-toolbar-dropdown-toggle.active {
-  background: rgba(88, 166, 255, 0.12);
-  border-color: rgba(88, 166, 255, 0.45);
+/* Browser tabs simplified: no shoulders, no bottom line, no fake segmented black strip. */
+:root[data-theme="dark"] #terminal-view { background: #090909; }
+:root[data-theme="dark"] .terminal-tabs {
+  height: 39px;
+  min-height: 39px;
+  padding: 5px 9px 4px;
+  align-items: center;
+  background: #0c0c0d;
+  border: 0;
+  gap: 4px;
 }
-
-@media (max-width: 760px) {
-  .terminal-toolbar-button-group .tool-button {
-    min-width: 56px;
-  }
-
-  .terminal-toolbar-dropdown-menu {
-    width: min(320px, calc(100vw - 16px));
-  }
+:root[data-theme="dark"] .terminal-tab {
+  flex: 0 1 178px;
+  min-width: 105px;
+  max-width: 178px;
+  height: 30px;
+  margin-left: 0;
+  border: 0;
+  color: #96989f;
 }
-
-/* ============================================================
-   v6.5 True Pill Scrollbars — visual styling only
-   No card/panel/input radius changes. No terminal JS/layout changes.
-   ============================================================ */
-
-:root {
-  --app-scrollbar-lane: 8px;
-  --app-scrollbar-thumb: rgba(145, 145, 145, 0.76);
-  --app-scrollbar-thumb-hover: rgba(190, 190, 190, 0.94);
+:root[data-theme="dark"] .terminal-tab-inner {
+  border-radius: 7px;
+  height: 30px;
+  padding: 4px 25px 4px 9px;
+  box-shadow: none;
+  transition: background-color 125ms ease, color 125ms ease;
 }
-
-/*
- * Electron/Chromium can prefer CSS Scrollbars Level 1 when scrollbar-width
- * or scrollbar-color is non-auto, which prevents the rounded WebKit thumb
- * from being the visible renderer. Put both back on auto so the rules below
- * control the actual shape.
- */
-*,
-.terminal-pane .xterm-viewport {
-  scrollbar-width: auto !important;
-  scrollbar-color: auto !important;
+:root[data-theme="dark"] .terminal-tab.active .terminal-tab-inner {
+  background: #26272b;
+  box-shadow: none;
 }
-
-/* 8px lane, with a 4px visible pill centered inside it. */
-*::-webkit-scrollbar {
-  width: var(--app-scrollbar-lane) !important;
-  height: var(--app-scrollbar-lane) !important;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent !important;
-  border-radius: 999px !important;
-}
-
-*::-webkit-scrollbar-thumb {
-  min-width: 28px;
-  min-height: 28px;
-  border: 2px solid transparent !important;
-  border-radius: 999px !important;
-  background: var(--app-scrollbar-thumb) !important;
-  background-clip: content-box !important;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--app-scrollbar-thumb-hover) !important;
-  background-clip: content-box !important;
-}
-
-*::-webkit-scrollbar-corner {
-  background: transparent !important;
-}
-
-/* Remove any native scrollbar end buttons/caps that can make the rail look square. */
-*::-webkit-scrollbar-button {
-  width: 0 !important;
-  height: 0 !important;
+:root[data-theme="dark"] .terminal-tab:not(.active):hover .terminal-tab-inner { background: #1a1b1e; }
+:root[data-theme="dark"] .terminal-tab-inner::before,
+:root[data-theme="dark"] .terminal-tab-inner::after,
+:root[data-theme="dark"] .terminal-tab::after {
   display: none !important;
+  content: none !important;
+  background: none !important;
+}
+:root[data-theme="dark"] .terminal-tab.is-working .terminal-tab-work-indicator { border-top-color: #20acd8; }
+
+/* Location as small metadata, not a full-width pill/bar. No duplicate Location text. */
+:root[data-theme="dark"] .terminal-session-header {
+  min-height: 29px;
+  height: 29px;
+  padding: 1px 13px;
+  gap: 8px;
+  background: #0c0c0d;
+  border: 0;
+}
+:root[data-theme="dark"] .terminal-session-header .terminal-session-summary {
+  gap: 6px;
+  min-width: 0;
+}
+:root[data-theme="dark"] .terminal-navigation-controls {
+  gap: 0;
+  padding: 0;
+  margin: 0 3px 0 0;
+  border: 0;
+}
+:root[data-theme="dark"] #terminal-nav-back,
+:root[data-theme="dark"] #terminal-nav-forward { display: none !important; }
+:root[data-theme="dark"] .terminal-navigation-button { width: 23px; height: 23px; padding: 3px; border-radius: 5px; }
+:root[data-theme="dark"] .terminal-location-prefix {
+  color: #74777f;
+  font-size: 10px;
+  font-weight: 500;
+}
+:root[data-theme="dark"] #terminal-location::before { display: none; content: none; }
+:root[data-theme="dark"] .terminal-session-header #terminal-location {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  color: #b0b3b9;
+  font-size: 11px;
+  line-height: 1.25;
+}
+:root[data-theme="dark"] .terminal-location-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .terminal-session-header .header-actions { align-self: center; }
+:root[data-theme="dark"] .terminal-session-header .status-pill {
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  background: transparent;
+}
+:root[data-theme="dark"] #terminal-host,
+:root[data-theme="dark"] #terminal-empty {
+  background: #090909;
+}
+:root[data-theme="dark"] .statusbar {
+  background: #111214;
+  border-top: 1px solid #242528;
+  font-size: 10px;
 }
 
-/*
- * Terminal: visual scrollbar styling only.
- * Keep xterm's proven native scrolling, FitAddon sizing and viewport geometry.
- */
-.terminal-pane .xterm-viewport::-webkit-scrollbar {
-  width: var(--app-scrollbar-lane) !important;
+@media (max-width: 930px) {
+  :root[data-theme="dark"] .workspace { grid-template-columns: minmax(190px, 220px) minmax(0,1fr); }
+  :root[data-theme="dark"] .workspace.connections-collapsed { grid-template-columns: 46px minmax(0, 1fr); }
+  :root[data-theme="dark"] .workspace.connections-hidden { grid-template-columns: minmax(0, 1fr); }
+  :root[data-theme="dark"] .toolbar { padding-inline: 5px; }
 }
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb {
-  border: 2px solid transparent !important;
-  border-radius: 999px !important;
-  background: rgba(145, 145, 145, 0.76) !important;
-  background-clip: content-box !important;
-}
-
-.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(190, 190, 190, 0.94) !important;
-  background-clip: content-box !important;
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] .terminal-tab-inner,
+  :root[data-theme="dark"] .tool-button,
+  :root[data-theme="dark"] .menu-item { transition: none; }
 }

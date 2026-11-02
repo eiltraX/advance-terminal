@@ -3,13 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('advanceTerminal', {
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getRuntimeStats: () => ipcRenderer.invoke('app:getRuntimeStats'),
-  restartAsAdministrator: () => ipcRenderer.invoke('app:restartElevated'),
-  detectTerminalProfileShells: () => ipcRenderer.invoke('terminalProfiles:detectShells'),
-  selectTerminalExecutable: () => ipcRenderer.invoke('dialog:selectTerminalExecutable'),
-  selectTerminalFolder: () => ipcRenderer.invoke('dialog:selectTerminalFolder'),
   windowAction: (action) => ipcRenderer.invoke('window:action', action),
-  getWorkspaceWindowState: () => ipcRenderer.invoke('window:getWorkspaceState'),
-  applyWorkspaceWindowState: (state) => ipcRenderer.invoke('window:applyWorkspaceState', state),
+  getWindowState: () => ipcRenderer.invoke('window:getState'),
+  onWindowStateChanged: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('window:state-changed', listener);
+    return () => ipcRenderer.removeListener('window:state-changed', listener);
+  },
 
   getUpdateStatus: () => ipcRenderer.invoke('updates:getStatus'),
   checkForUpdates: (payload = {}) => ipcRenderer.invoke('updates:check', payload),
@@ -44,6 +45,13 @@ contextBridge.exposeInMainWorld('advanceTerminal', {
   writeTerminal: (payload) => ipcRenderer.invoke('terminal:write', payload),
   resizeTerminal: (payload) => ipcRenderer.invoke('terminal:resize', payload),
   closeTerminal: (payload) => ipcRenderer.invoke('terminal:close', payload),
+  notifyTerminalActivityComplete: (payload) => ipcRenderer.send('terminal:activity-complete', payload),
+  onTerminalNotificationOpen: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('terminal:notification-open', listener);
+    return () => ipcRenderer.removeListener('terminal:notification-open', listener);
+  },
 
   onTerminalData: (callback) => {
     const listener = (_event, payload) => callback(payload);

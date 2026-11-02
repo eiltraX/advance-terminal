@@ -1,0 +1,133 @@
+/* Advance Terminal V7: frameless native window with a draggable, app-owned header.
+   UI chrome only. Terminal / SSH / clipboard dispatch is intentionally untouched. */
+.v7-minimal-topbar {
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  padding-right: 0 !important;
+}
+.v7-minimal-topbar button,
+.v7-minimal-topbar input,
+.v7-minimal-topbar select,
+.v7-minimal-topbar textarea,
+.v7-minimal-topbar a,
+.v7-shell-menu-wrap,
+.v7-shell-menu,
+.v7-quick-search,
+.v7-global-results,
+.v7-minimal-tools,
+.v7-window-controls {
+  -webkit-app-region: no-drag;
+}
+.v7-minimal-tools {
+  height: 38px;
+  align-self: stretch;
+}
+.v7-window-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 38px;
+  align-self: stretch;
+  margin-left: 8px;
+}
+.v7-window-control {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 38px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--v7-fg, #e9e9ec);
+  cursor: default;
+  outline-offset: -3px;
+}
+.v7-window-control svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.v7-window-control:hover { background: var(--v7-control, #252628); }
+.v7-window-control:active { background: #36383e; }
+.v7-window-control:focus-visible { outline: 2px solid #43aed6; }
+.v7-window-close:hover { background: #c42b1c; color: #fff; }
+.v7-window-close:active { background: #ab2115; color: #fff; }
+.v7-window-icon-restore { display: none !important; }
+.v7-window-control.is-maximized .v7-window-icon-maximize { display: none; }
+.v7-window-control.is-maximized .v7-window-icon-restore { display: block !important; }
+@media (max-width: 850px) {
+  .v7-minimal-topbar {
+    grid-template-columns: 38px minmax(120px, 1fr) auto !important;
+    gap: 6px !important;
+    padding-left: 7px !important;
+  }
+  .v7-window-controls { margin-left: 4px; }
+  .v7-window-control { flex-basis: 36px; width: 36px; }
+}
+@media (max-width: 530px) {
+  .v7-identity { display: none !important; }
+  .v7-minimal-topbar { grid-template-columns: 32px minmax(80px, 1fr) auto !important; }
+  .v7-minimal-topbar #v7-new-session,
+  .v7-minimal-topbar #v7-open-settings { width: 23px; padding: 3px; }
+  .v7-window-control { flex-basis: 32px; width: 32px; }
+}
+
+
+/* V7 header: Collapse | Tools, centered search, + | Settings.
+   Preserve the frameless draggable surface and existing window controls. */
+.v7-minimal-topbar .v7-shell-menu-wrap { display: inline-flex; align-items: center; gap: 5px; }
+.v7-minimal-topbar #v7-shell-menu { display: none !important; } /* Legacy toolbar remains mounted for its event handlers. */
+.v7-minimal-topbar .v7-sidebar-collapse-icon,
+.v7-minimal-topbar #v7-shell-menu-toggle,
+.v7-minimal-topbar #v7-open-settings,
+.v7-minimal-topbar #v7-new-session { color: var(--v7-muted); background: transparent; }
+.v7-minimal-topbar .v7-sidebar-collapse-icon:hover,
+.v7-minimal-topbar #v7-shell-menu-toggle:hover,
+.v7-minimal-topbar #v7-open-settings:hover,
+.v7-minimal-topbar #v7-new-session:hover,
+.v7-minimal-topbar [aria-expanded="true"].v7-header-icon { color: var(--v7-fg); background: var(--v7-control); }
+.v7-settings-menu-wrap { position: relative; display: inline-flex; align-items: center; -webkit-app-region: no-drag; }
+.v7-header-popup[hidden] { display: none !important; }
+.v7-header-popup {
+  -webkit-app-region: no-drag; position: absolute; top: calc(100% + 6px);
+  left: 32px; z-index: 2200; box-sizing: border-box; width: 176px;
+  padding: 5px; border: 1px solid var(--v7-border); border-radius: 8px;
+  background: var(--v7-panel); box-shadow: 0 12px 28px rgba(0,0,0,.35);
+}
+.v7-settings-menu-wrap .v7-header-popup { left: auto; right: 0; }
+.v7-header-popup-item {
+  display: block; width: 100%; min-height: 34px; padding: 7px 10px;
+  border: 0; border-radius: 5px; background: transparent;
+  color: var(--v7-fg); font: inherit; font-size: 12px;
+  text-align: left; cursor: pointer;
+}
+.v7-header-popup-item:hover, .v7-header-popup-item:focus-visible {
+  outline: none; background: var(--v7-control);
+}
+.v7-minimal-topbar .v7-identity { display: none !important; }
+/* Collapse hides the whole Sessions sidebar, not a blank 46px strip. */
+.workspace.connections-collapsed:not(.connections-hidden) { grid-template-columns: 0 minmax(0, 1fr) !important; }
+.workspace.connections-collapsed:not(.connections-hidden) .servers-panel {
+  width: 0 !important; min-width: 0 !important; padding: 0 !important;
+  overflow: hidden !important; border: 0 !important;
+}
+#servers-panel.v7-sessions-only.is-collapsed .v7-session-sidebar { display: none !important; }
+@media (max-width: 560px) {
+  .v7-minimal-topbar { grid-template-columns: 72px minmax(70px,1fr) auto !important; }
+  .v7-minimal-topbar .v7-shell-menu-wrap { gap: 1px; }
+  .v7-header-popup { left: 0; }
+}
+@media (min-width: 561px) and (max-width: 850px) {
+  .v7-minimal-topbar { grid-template-columns: 72px minmax(120px,1fr) auto !important; }
+}
