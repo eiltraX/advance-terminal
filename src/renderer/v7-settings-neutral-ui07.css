@@ -1,0 +1,185 @@
+/* UI07 — Neutral Settings refinement; matches the approved Sessions palette.
+   Visual styling only. No changes to SSH, terminal rendering, settings values,
+   update handlers, draggable panel edge or session-tree geometry. */
+#settings-view {
+  --at-setting-accent: #a4abb5;
+  --at-ui07-field-height: 32px;
+  --at-ui07-radius: 6px;
+}
+/* Navigation: identical horizontal padding across inactive/active rows.
+   No colored bar: the full charcoal background communicates selection. */
+#settings-view .at-settings-nav-list .settings-tab,
+#settings-view .at-settings-nav-list .settings-tab.active {
+  position: relative;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  padding: 8px 10px;
+  border-radius: var(--at-ui07-radius);
+  background: transparent;
+  color: var(--win-text);
+  font-weight: 500;
+}
+#settings-view .at-settings-nav-list .settings-tab.active {
+  background: var(--win-panel-soft);
+  border-color: var(--win-border);
+  font-weight: 600;
+}
+#settings-view .at-settings-nav-list .settings-tab:hover:not(.active) {
+  background: var(--win-panel-soft);
+}
+#settings-view .at-settings-nav-list .settings-tab::before,
+#settings-view .at-settings-nav-list .settings-tab::after {
+  border: 0;
+  box-shadow: none;
+}
+/* Search: keep icon and text from overlapping when compact density rules
+   override the input's default padding. The nav retains its own width. */
+#settings-view .at-settings-search-wrap {
+  width: 100%;
+  min-width: 0;
+}
+#settings-view #at-settings-search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: var(--at-ui07-field-height);
+  min-height: var(--at-ui07-field-height);
+  padding: 6px 10px 6px 33px;
+  border: 1px solid var(--win-border);
+  border-radius: var(--at-ui07-radius);
+  background: var(--win-panel);
+  color: var(--win-text);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+#settings-view .at-settings-search-wrap svg {
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  stroke: var(--win-muted);
+}
+#settings-view #at-settings-search::placeholder { color: var(--win-muted); opacity: 1; }
+#settings-view :is(#at-settings-search, .at-settings-picker, .settings-tab, .at-settings-result):focus-visible {
+  outline: 2px solid #b5bdc8;
+  outline-offset: 1px;
+}
+#settings-view #at-settings-search:focus,
+#settings-view #at-settings-search:focus-visible {
+  border-color: #8b95a3;
+  box-shadow: none;
+}
+/* Updates: present labels above the values instead of two light-gray cards.
+   Scope to Updates only: other Settings fields are intentionally unchanged. */
+#settings-view #settings-tab-updates .update-card {
+  gap: 12px;
+  border-radius: 7px;
+}
+#settings-view #settings-tab-updates .update-card-header {
+  margin: 0;
+  align-items: center;
+}
+#settings-view #settings-tab-updates .update-status-box {
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  gap: 10px;
+  min-width: 0;
+}
+#settings-view #settings-tab-updates .update-status-box > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+#settings-view #settings-tab-updates .update-status-box span {
+  display: block;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .035em;
+  line-height: 1.4;
+  color: var(--win-muted);
+}
+#settings-view #settings-tab-updates .update-status-box strong {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--win-text);
+  background: var(--win-panel-soft);
+  border: 1px solid var(--win-border);
+  border-radius: var(--at-ui07-radius);
+}
+#settings-view #settings-tab-updates .update-status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  min-height: 24px;
+  background: var(--win-panel-soft);
+  border-color: var(--win-border);
+  color: var(--win-text);
+}
+/* Pending updates use a neutral indicator, but retain meaningful
+   warning/success colors supplied by the existing status classes. */
+#settings-view #settings-tab-updates .update-status-pill:is(.update-status-checking,.update-status-available,.update-status-downloading,.update-status-installing) {
+  background: var(--win-panel-soft);
+  border-color: var(--win-border);
+  color: var(--win-text);
+}
+#settings-view #settings-tab-updates .update-progress > div { background: #959ca7; }
+#settings-view #settings-tab-updates :is(.primary-button, .secondary-button) {
+  background: var(--win-panel-soft);
+  color: var(--win-text);
+  border: 1px solid var(--win-border);
+}
+#settings-view #settings-tab-updates :is(.primary-button, .secondary-button):hover:not(:disabled) {
+  background: var(--win-panel);
+  border-color: var(--win-muted);
+}
+/* Dark theme palette: avoid inheriting light-theme white/gray fields. */
+:root[data-theme="dark"] #settings-view .at-settings-nav-list .settings-tab.active {
+  background: #292d34;
+  border-color: #353a43;
+  color: #f2f3f5;
+}
+:root[data-theme="dark"] #settings-view .at-settings-nav-list .settings-tab:hover:not(.active) { background: #24282f; }
+:root[data-theme="dark"] #settings-view #at-settings-search { background: #1c2026; border-color: #353940; color: #e5e7eb; }
+:root[data-theme="dark"] #settings-view #settings-tab-updates .update-status-box strong {
+  background: #252a30;
+  border-color: #363b44;
+  color: #e5e7eb;
+}
+:root[data-theme="dark"] #settings-view #settings-tab-updates .update-status-pill {
+  background: #292e35;
+  border-color: #3c4149;
+  color: #d6d9df;
+}
+:root[data-theme="dark"] #settings-view #settings-tab-updates :is(.primary-button, .secondary-button) {
+  background: #30353d;
+  border-color: #3d434c;
+  color: #f0f1f2;
+}
+:root[data-theme="dark"] #settings-view #settings-tab-updates :is(.primary-button, .secondary-button):hover:not(:disabled) {
+  background: #3a4049;
+  border-color: #535b67;
+}
+/* Gentle transitions only on controls; never animate flyout width or resize handle. */
+#settings-view .at-settings-nav-list .settings-tab,
+#settings-view #settings-tab-updates :is(.primary-button,.secondary-button) {
+  transition: background-color 130ms ease, border-color 130ms ease;
+}
+.workspace.v7-settings-dragging #settings-view .at-settings-nav-list .settings-tab { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  #settings-view .at-settings-nav-list .settings-tab,
+  #settings-view #settings-tab-updates :is(.primary-button,.secondary-button) { transition: none !important; }
+}

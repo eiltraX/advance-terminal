@@ -1,0 +1,136 @@
+/* Advance Terminal M07 · UI/UX refinement only.
+   This is an additive presentation layer: no terminal viewport sizes,
+   process handling, session lifecycle, or PTY resize logic is changed. */
+:root {
+  --v7-ui-focus: #2c74ca;
+  --v7-ui-focus-offset: 2px;
+}
+:root[data-theme="dark"] {
+  --v7-ui-focus: #84b9ff;
+  --v7-ui-label: #b4bac6;
+  --v7-ui-quiet: #959eae;
+}
+:root[data-theme="light"] {
+  --v7-ui-focus: #1765b3;
+  --v7-ui-label: #485469;
+  --v7-ui-quiet: #5b6473;
+}
+
+/* Give keyboard users a readable, consistent focus target instead of
+   relying solely on hover.  Never steal focus from xterm's textarea. */
+:where(.v7-minimal-topbar, .v7-session-sidebar, .v7-command-composer,
+  .terminal-session-header, .terminal-tabs, .statusbar,
+  .settings-layout, .modal, .v7-shell-menu, .v7-flyout-content)
+  :is(button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--v7-ui-focus);
+  outline-offset: var(--v7-ui-focus-offset);
+}
+:where(.v7-minimal-topbar, .v7-session-sidebar, .v7-command-composer,
+  .terminal-session-header, .terminal-tabs) button:disabled {
+  cursor: not-allowed;
+}
+
+/* The side list is the primary navigation surface.  Preserve per-session
+   colors and hierarchy while increasing label readability. */
+.v7-session-bar,
+.v7-session-section-header {
+  letter-spacing: .045em;
+}
+.v7-session-section-header {
+  line-height: 1.4;
+}
+.v7-session-search {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.v7-session-item {
+  min-width: 0;
+}
+.v7-session-item .v7-session-name {
+  min-width: 0;
+  overflow: hidden;
+}
+.v7-session-item .v7-session-name strong {
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.v7-session-item .v7-session-name small {
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+.v7-session-item[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--v7-ui-focus);
+}
+.v7-session-row.is-dragging { opacity: .65; }
+.v7-session-row.is-drop-before,
+.v7-session-row.is-drop-after { outline-color: var(--v7-ui-focus); }
+.v7-session-search::placeholder { opacity: .75; }
+
+/* Keep the terminal dominant. Improve the low-contrast location metadata
+   without changing the one-line header's height. */
+:root[data-theme="dark"] .terminal-session-header .terminal-location-prefix {
+  color: var(--v7-ui-quiet);
+}
+:root[data-theme="dark"] .terminal-session-header #terminal-location {
+  color: var(--v7-ui-label);
+}
+.terminal-session-header .terminal-session-summary,
+.terminal-session-header #terminal-location {
+  min-width: 0;
+}
+
+/* An editing surface should look like an input, not terminal output.
+   No changes to multiline behavior, key shortcuts or editor height. */
+#v7-composer-input { line-height: 1.5; }
+#v7-composer-input::placeholder { opacity: .76; }
+#v7-composer-send,
+#v7-composer-multiline-toggle,
+.v7-composer-icon { transition: border-color 110ms ease, background-color 110ms ease, color 110ms ease; }
+#v7-composer-multiline-toggle[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--v7-ui-focus);
+}
+#v7-composer-multiline-hint:not([hidden]) {
+  opacity: 1;
+  font-size: 11.5px;
+}
+:root[data-theme="dark"] #v7-composer-multiline-hint:not([hidden]) {
+  color: var(--v7-ui-label);
+}
+
+/* Empty states should explain the next action at a glance. */
+.terminal-empty .empty-card {
+  max-width: 430px;
+  margin-inline: auto;
+}
+.terminal-empty .empty-card h2 { line-height: 1.3; }
+.terminal-empty .empty-card p { line-height: 1.55; }
+
+/* The status bar remains compact, but text must be readable. */
+.statusbar { font-size: 11px; }
+:root[data-theme="dark"] .statusbar { font-size: 11px; }
+.statusbar-identity { min-width: 0; }
+.statusbar-identity .statusbar-runtime-item { white-space: nowrap; }
+
+/* Dialog and menu controls retain native focus affordances. */
+.modal :is(input, select, textarea),
+.v7-shell-menu :is(input, select),
+.v7-flyout-content :is(input, select, textarea) {
+  font-size: max(12px, 1em);
+}
+
+@media (max-width: 850px) {
+  /* On smaller windows, allow composer options to wrap rather than clip. */
+  .v7-command-composer .v7-composer-top-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    min-width: 0;
+  }
+  .terminal-empty .empty-card { max-width: min(100%, 350px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #v7-composer-send,
+  #v7-composer-multiline-toggle,
+  .v7-composer-icon { transition: none; }
+}

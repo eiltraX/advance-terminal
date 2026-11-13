@@ -1,0 +1,55 @@
+/* M05: opt-in, bounded editor sizing. Single-line composer retains its original layout. */
+#v7-composer-multiline-toggle {
+  flex: none;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color, rgba(180, 180, 180, .4));
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+#v7-composer-multiline-toggle[aria-pressed="true"] {
+  border-color: var(--accent-color, #bca17c);
+  background: rgba(180, 153, 113, .14);
+}
+#v7-composer-multiline-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+#v7-command-composer.is-multiline .v7-composer-edit-row {
+  align-items: stretch;
+}
+#v7-command-composer.is-multiline .v7-composer-input-wrap {
+  height: auto !important;
+  min-height: 112px;
+  max-height: none !important;
+  min-width: 0;
+  overflow: visible;
+  align-items: stretch;
+}
+#v7-command-composer.is-multiline #v7-composer-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 112px !important;
+  max-height: min(36vh, 320px) !important;
+  height: auto;
+  line-height: 1.5;
+  overflow-x: auto;
+  overflow-y: auto !important;
+  white-space: pre;
+  resize: vertical;
+}
+#v7-command-composer.is-multiline #v7-composer-ghost {
+  display: none !important;
+}
+#v7-composer-multiline-hint:not([hidden]) {
+  display: block;
+  margin: 5px 2px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: .77;
+}

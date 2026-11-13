@@ -1,0 +1,105 @@
+/* UI03 — Drag the right edge of Settings to resize the existing flyout.
+   Only the Settings panel receives a resizer; the other flyouts remain unchanged. */
+.workspace.v7-flyout-open.v7-settings-resizable {
+  grid-template-columns: 250px minmax(0, var(--v7-settings-panel-width, min(30vw, 380px))) minmax(0, 1fr) !important;
+}
+.workspace.v7-flyout-open.v7-settings-resizable.connections-collapsed {
+  grid-template-columns: 0 minmax(0, var(--v7-settings-panel-width, min(30vw, 380px))) minmax(0, 1fr) !important;
+}
+.workspace.v7-flyout-open.v7-settings-resizable.connections-hidden {
+  grid-template-columns: 0 minmax(0, var(--v7-settings-panel-width, min(30vw, 380px))) minmax(0, 1fr) !important;
+}
+.workspace.v7-settings-resizable #v7-workspace-flyout { position: relative; }
+.v7-settings-resize-handle {
+  display: block;
+  position: absolute;
+  right: 0;
+  top: 43px;
+  bottom: 0;
+  width: 10px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  border: 0;
+  background: transparent;
+}
+.v7-settings-resize-handle[hidden] { display: none !important; }
+.v7-settings-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 3px;
+  height: 40px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--v7-muted, #9298a2);
+  opacity: .34;
+  transition: opacity .12s ease, background .12s ease;
+}
+.v7-settings-resize-handle:hover::after,
+.v7-settings-resize-handle:focus-visible::after,
+.workspace.v7-settings-dragging .v7-settings-resize-handle::after {
+  opacity: .95;
+  background: #62b6ea;
+}
+.v7-settings-resize-handle:focus-visible { outline: 2px solid #62b6ea; outline-offset: -2px; }
+.workspace.v7-settings-dragging, .workspace.v7-settings-dragging * { cursor: col-resize !important; }
+.workspace.v7-settings-dragging { user-select: none !important; }
+/* Show the full category rail once Settings has enough usable width. */
+.workspace.v7-settings-wide .v7-flyout-content #settings-view > .at-settings-layout {
+  display: grid !important;
+  flex-direction: row !important;
+  grid-template-columns: minmax(180px, 210px) minmax(0, 1fr) !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-nav {
+  min-width: 0;
+  width: auto;
+  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--win-border, #34383d);
+  border-bottom: 0;
+  padding: 14px 11px;
+}
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-nav-list { display: flex !important; }
+.workspace.v7-settings-wide .v7-flyout-content #settings-view.at-settings-is-searching .at-settings-nav-list { display: none !important; }
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-picker,
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-picker-label { display: none !important; }
+.workspace.v7-settings-wide .v7-flyout-content #settings-view > .at-settings-layout > .settings-content {
+  min-width: 0;
+  padding: 20px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-recovery-row {
+  grid-template-columns: minmax(0,1fr) auto;
+  padding: 12px;
+}
+.workspace.v7-settings-wide .v7-flyout-content #settings-view .at-recovery-row button { justify-self: end; }
+@media (max-width: 850px) {
+  .workspace.v7-flyout-open.v7-settings-resizable {
+    grid-template-columns: 206px minmax(0, var(--v7-settings-panel-width, 32vw)) minmax(0, 1fr) !important;
+  }
+  .workspace.v7-flyout-open.v7-settings-resizable.connections-collapsed,
+  .workspace.v7-flyout-open.v7-settings-resizable.connections-hidden {
+    grid-template-columns: 0 minmax(0, var(--v7-settings-panel-width, 40vw)) minmax(0, 1fr) !important;
+  }
+  .workspace.v7-settings-wide .v7-flyout-content #settings-view > .at-settings-layout { display: flex !important; flex-direction: column !important; }
+  .workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-nav { border-right: 0; border-bottom: 1px solid var(--win-border, #34383d); padding: 10px 12px; }
+  .workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-nav-list { display: none !important; }
+  .workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-picker,
+  .workspace.v7-settings-wide .v7-flyout-content #settings-view .at-settings-picker-label { display: block !important; }
+}
+@media (max-width: 560px) {
+  .workspace.v7-flyout-open.v7-settings-resizable { grid-template-columns: 170px minmax(0,var(--v7-settings-panel-width,40vw)) minmax(0,1fr) !important; }
+  .workspace.v7-flyout-open.v7-settings-resizable.connections-collapsed,
+  .workspace.v7-flyout-open.v7-settings-resizable.connections-hidden { grid-template-columns: 0 minmax(0,var(--v7-settings-panel-width,45vw)) minmax(0,1fr) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v7-settings-resize-handle::after { transition: none !important; }
+}

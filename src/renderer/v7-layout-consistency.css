@@ -30,27 +30,27 @@
    Chromium, producing the thicker, square OS scrollbar seen in Windows. */
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport) {
   scrollbar-width: auto;
   scrollbar-color: auto;
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-track {
   background: transparent;
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb {
   background: var(--v7-scroll-thumb);
   background-clip: padding-box;
@@ -60,14 +60,14 @@
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb:hover {
   background: var(--v7-scroll-hover);
   background-clip: padding-box;
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-button {
   display: none;
   width: 0;
@@ -75,7 +75,7 @@
 }
 :root :is(.server-list, .command-list, .v7-session-list, .v7-flyout-content,
     .settings-content, .help-content, .v7-shell-menu, .v7-global-results,
-    .v7-new-session-menu, .v7-header-popup, .restore-points-list,
+    .v7-new-session-menu, .v7-header-popup,
     .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-corner {
   background: transparent;
 }
@@ -83,8 +83,7 @@
    re-enable native scrollbars after the custom rules are loaded. */
 :root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
     .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
-    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
-    .restore-points-list, .activity-feed-content, .xterm-viewport) {
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup, .activity-feed-content, .xterm-viewport) {
   scrollbar-width: auto;
   scrollbar-color: auto;
 }
@@ -93,8 +92,7 @@
    element rules above. Match that specificity to enforce one dark thumb. */
 :root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
     .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
-    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
-    .restore-points-list, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb {
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb {
   background: var(--v7-scroll-thumb);
   background-clip: padding-box;
   border: 1px solid transparent;
@@ -102,8 +100,7 @@
 }
 :root[data-theme="dark"] :is(.server-list, .command-list, .v7-session-list,
     .v7-flyout-content, .settings-content, .help-content, .v7-shell-menu,
-    .v7-global-results, .v7-new-session-menu, .v7-header-popup,
-    .restore-points-list, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb:hover {
+    .v7-global-results, .v7-new-session-menu, .v7-header-popup, .activity-feed-content, .xterm-viewport)::-webkit-scrollbar-thumb:hover {
   background: var(--v7-scroll-hover);
   background-clip: padding-box;
 }

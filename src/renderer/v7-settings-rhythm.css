@@ -1,0 +1,171 @@
+/* UI04 — Proportional Settings rhythm, scoped to the existing Settings view.
+   Approximate golden-ratio spacing scale: 4 / 6 / 10 / 16 / 26 / 42 px.
+   Do not animate the flyout grid or resizer; terminal resize must stay responsive. */
+#settings-view {
+  --at-gap-1: 4px;
+  --at-gap-2: 6px;
+  --at-gap-3: 10px;
+  --at-gap-4: 16px;
+  --at-gap-5: 26px;
+  --at-gap-6: 42px;
+  --at-control-height: 38px;
+  --at-card-radius: 8px;
+  --at-ease: cubic-bezier(.2,.65,.25,1);
+  --at-t-fast: 130ms;
+  --at-t-enter: 190ms;
+}
+#settings-view, #settings-view *, #settings-view *::before, #settings-view *::after { box-sizing: border-box; }
+#settings-view .at-settings-nav { gap: var(--at-gap-3); }
+#settings-view .at-settings-nav-list { gap: var(--at-gap-1); }
+#settings-view .at-settings-nav-heading { margin: var(--at-gap-4) var(--at-gap-3) var(--at-gap-2); }
+#settings-view .at-settings-nav-list .settings-tab {
+  min-height: 48px;
+  padding: var(--at-gap-3);
+  border-radius: 7px;
+  transition: background-color var(--at-t-fast) ease, border-color var(--at-t-fast) ease, color var(--at-t-fast) ease;
+}
+#settings-view .at-settings-nav-list .settings-tab.active { padding-left: 7px; }
+#settings-view .at-settings-tab-title { line-height: 1.35; font-size: 12px; }
+#settings-view .at-settings-tab-desc { line-height: 1.4; margin-top: var(--at-gap-1); }
+#settings-view #at-settings-search, #settings-view .at-settings-picker {
+  min-height: var(--at-control-height);
+  border-radius: 7px;
+  transition: border-color var(--at-t-fast) ease, background-color var(--at-t-fast) ease;
+}
+#settings-view .at-settings-search-results { padding-top: var(--at-gap-3); }
+#settings-view .at-settings-result {
+  border-radius: 7px;
+  padding: var(--at-gap-3);
+  min-height: var(--at-control-height);
+  transition: background-color var(--at-t-fast) ease;
+}
+#settings-view .at-settings-result small { margin-top: var(--at-gap-1); padding-top: 0; }
+/* Content groups share one density, whether the flyout is compact or wide. */
+#settings-view .settings-section > .section-title { margin: 0 0 var(--at-gap-4); }
+#settings-view .settings-section > .section-title h2 { font-size: 17px; line-height: 1.3; letter-spacing: -.015em; margin: 0; }
+#settings-view .settings-section > .section-title .eyebrow { line-height: 1.45; margin-bottom: var(--at-gap-1); }
+#settings-view .settings-section .windows-group,
+#settings-view .settings-section .about-help-card,
+#settings-view .settings-section .ssh-help-card,
+#settings-view .settings-section .at-recovery-row {
+  border-radius: var(--at-card-radius);
+}
+#settings-view .settings-section .windows-group {
+  padding: var(--at-gap-4);
+  margin-top: var(--at-gap-4);
+}
+#settings-view .settings-section .windows-group:first-of-type { margin-top: 0; }
+#settings-view .settings-section .section-help,
+#settings-view .at-settings-section-intro {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 var(--at-gap-4);
+}
+#settings-view .section-subtitle { margin-bottom: var(--at-gap-4); }
+#settings-view .section-subtitle h3 { line-height: 1.35; margin: 0; }
+#settings-view .form-grid, #settings-view .mini-grid, #settings-view .ai-settings-panel,
+#settings-view .at-recovery-actions, #settings-view .ssh-key-list, #settings-view .ssh-key-help-grid {
+  gap: var(--at-gap-4);
+}
+#settings-view .form-grid, #settings-view .mini-grid, #settings-view .ssh-key-help-grid {
+  min-width: 0;
+}
+#settings-view label:not(.check-row):not(.report-option-row) { gap: var(--at-gap-2); }
+#settings-view label > span:first-child { line-height: 1.45; }
+#settings-view input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+#settings-view select {
+  min-width: 0;
+  height: var(--at-control-height);
+  padding: 8px var(--at-gap-3);
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+#settings-view textarea {
+  min-width: 0;
+  padding: var(--at-gap-3);
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+#settings-view .primary-button, #settings-view .secondary-button,
+#settings-view .danger-button, #settings-view .input-with-button button {
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: var(--at-control-height);
+  padding: 8px var(--at-gap-4);
+  border-radius: 7px;
+  line-height: 1.35;
+  font-size: 12px;
+  transition: background-color var(--at-t-fast) ease, border-color var(--at-t-fast) ease, box-shadow var(--at-t-fast) ease;
+}
+#settings-view .form-actions, #settings-view .inline-actions,
+#settings-view .update-actions, #settings-view .ssh-key-actions,
+#settings-view .compact-actions { gap: var(--at-gap-3); flex-wrap: wrap; }
+#settings-view .form-actions { margin-top: var(--at-gap-4); }
+#settings-view .report-option-row {
+  align-items: start;
+  grid-template-columns: 18px minmax(0,1fr);
+  gap: var(--at-gap-3);
+  padding: var(--at-gap-4);
+  border-radius: 7px;
+  margin-bottom: var(--at-gap-3);
+  min-width: 0;
+  transition: border-color var(--at-t-fast) ease, background-color var(--at-t-fast) ease;
+}
+#settings-view .report-option-row input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0; }
+#settings-view .report-option-row strong { line-height: 1.4; }
+#settings-view .report-option-row small { line-height: 1.5; margin-top: var(--at-gap-2); }
+#settings-view .check-row { padding-top: var(--at-gap-3); gap: var(--at-gap-3); }
+#settings-view .check-row input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; }
+#settings-view .at-recovery-row { padding: var(--at-gap-4); gap: var(--at-gap-4); }
+#settings-view .at-recovery-row h3 { margin-bottom: var(--at-gap-2); }
+#settings-view .at-settings-safety-note { margin-top: var(--at-gap-4); padding: var(--at-gap-4); border-radius: 6px; }
+#settings-view .ssh-help-card { padding: var(--at-gap-4); min-width: 0; line-height: 1.55; overflow-wrap: anywhere; }
+#settings-view .ssh-help-card ol { padding-left: 20px; }
+#settings-view .ssh-help-card li + li { margin-top: var(--at-gap-2); }
+#settings-view .ssh-help-card li strong { display: inline; margin: 0; }
+#settings-view .ssh-help-card li { line-height: 1.55; }
+#settings-view .ssh-key-row { padding: var(--at-gap-4); gap: var(--at-gap-4); border-radius: var(--at-card-radius); }
+#settings-view .terminal-actions-manager { gap: var(--at-gap-4); }
+#settings-view .terminal-action-list-panel, #settings-view .terminal-action-editor { border-radius: var(--at-card-radius); }
+#settings-view .terminal-action-list-item { border-radius: 7px; margin-bottom: var(--at-gap-2); }
+#settings-view .terminal-action-list-buttons { gap: var(--at-gap-2); padding: var(--at-gap-3); }
+#settings-view .update-status-box { gap: var(--at-gap-3); }
+#settings-view .update-status-box > div { padding: var(--at-gap-4); border-radius: 7px; }
+#settings-view .ai-project-inspector { gap: var(--at-gap-4); padding-top: var(--at-gap-5); }
+#settings-view :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--at-setting-accent, #4f96d7); outline-offset: 2px; }
+/* A gentle cue on category change. No looping animation or layout-width animation. */
+#settings-view .settings-section.active > .section-title {
+  animation: at-settings-enter var(--at-t-enter) var(--at-ease) both;
+}
+@keyframes at-settings-enter {
+  from { opacity: .7; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Narrow flyouts must never squeeze two-column forms or SSH help into tiny cells. */
+.v7-flyout-content #settings-view .form-grid,
+.v7-flyout-content #settings-view .mini-grid,
+.v7-flyout-content #settings-view .ssh-key-help-grid,
+.v7-flyout-content #settings-view .update-status-box {
+  grid-template-columns: minmax(0,1fr) !important;
+}
+.v7-flyout-content #settings-view .terminal-actions-manager { grid-template-columns: minmax(0,1fr); }
+.v7-flyout-content #settings-view .settings-section .windows-group { padding: var(--at-gap-4); }
+.v7-flyout-content #settings-view .at-settings-nav { gap: var(--at-gap-3); }
+.v7-flyout-content #settings-view > .at-settings-layout > .settings-content { padding: var(--at-gap-4); }
+.v7-flyout-content #settings-view .at-settings-nav-list .settings-tab { min-height: 48px; }
+.v7-flyout-content #settings-view .ssh-key-row,
+.v7-flyout-content #settings-view .section-subtitle.with-actions {
+  grid-template-columns: minmax(0,1fr);
+}
+.v7-flyout-content #settings-view .ssh-key-actions { justify-content: flex-start; }
+.workspace.v7-settings-wide .v7-flyout-content #settings-view > .at-settings-layout > .settings-content { padding: var(--at-gap-5) var(--at-gap-4); }
+.workspace.v7-settings-dragging #settings-view *,
+.workspace.v7-settings-dragging #settings-view *::before,
+.workspace.v7-settings-dragging #settings-view *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  #settings-view *, #settings-view *::before, #settings-view *::after { animation: none !important; transition: none !important; }
+}

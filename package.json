@@ -1,6 +1,6 @@
 {
   "name": "advance-terminal-standalone",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Advance Terminal v7.0.0 — Best Stable Performance Edition, with responsive window sizing, animated toolbar feedback, advanced tabs, and persistent pinned tabs.",
   "main": "src/main/main.js",
   "private": true,

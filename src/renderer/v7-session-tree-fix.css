@@ -1,0 +1,72 @@
+/* Session tree: one continuous connector and an unambiguous after-group target.
+   Scoped to the sidebar; no terminal, Settings, or SSH controls are modified. */
+#v7-session-list .v7-session-row.is-child {
+  position: relative;
+  /* Actual child cards are indented inside the row by the existing shell CSS. */
+  --v7-tree-connector: color-mix(in srgb, currentColor 35%, transparent);
+}
+/* The existing tree line stops at each row. Extend each segment across the
+   inter-row spacing; stop the final segment at its last child's elbow. */
+#v7-session-list .v7-session-row.is-child::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: -11px;
+  bottom: -11px;
+  height: auto;
+  width: 0;
+  border-left: 1px solid var(--v7-tree-connector);
+  background: none;
+  transform: none;
+  pointer-events: none;
+}
+#v7-session-list .v7-session-row.is-child.v7-tree-last::before {
+  bottom: 50%;
+}
+#v7-session-list .v7-session-row.is-child::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 10px;
+  height: 0;
+  border-top: 1px solid var(--v7-tree-connector);
+  background: none;
+  transform: none;
+  pointer-events: none;
+}
+/* The end-of-subtree landing area is available only where nested rows exist.
+   During dragging it becomes a visible insertion line, not another child. */
+#v7-session-list .v7-session-drop-zone {
+  position: relative;
+  display: block;
+  flex: 0 0 12px;
+  height: 12px;
+  min-height: 12px;
+  cursor: grab;
+}
+#v7-session-list .v7-session-drop-zone.is-drop-target::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 5px;
+  height: 2px;
+  border-radius: 2px;
+  background: #63a7ff;
+  pointer-events: none;
+}
+/* The bottom of the last child is another way to indicate a root-level drop. */
+#v7-session-list .v7-session-row.is-child.is-drop-after-tree::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: auto;
+  bottom: -4px;
+  width: auto;
+  height: 2px;
+  border: 0;
+  border-radius: 2px;
+  background: #63a7ff;
+}
