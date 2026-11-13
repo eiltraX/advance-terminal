@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self' file: blob:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' data: file:;">
+    content="default-src 'self' file: blob:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' data: file:; object-src 'none'; base-uri 'none'; frame-src 'none';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Advance Terminal</title>
   <link rel="icon" type="image/png" href="../../build/icon.png">
@@ -20,6 +20,13 @@
   <link rel="stylesheet" href="./v7-design-tokens.css">
   <link rel="stylesheet" href="./v7-design-forms-dialogs.css">
   <link rel="stylesheet" href="./v7-design-menus-flyouts.css">
+  <link rel="stylesheet" href="./v7-multiline-composer.css">
+  <link rel="stylesheet" href="./v7-settings-redesign.css">
+  <link rel="stylesheet" href="./v7-settings-expand.css">
+  <link rel="stylesheet" href="./v7-settings-rhythm.css">
+  <link rel="stylesheet" href="./v7-session-tree-safe.css">
+  <link rel="stylesheet" href="./v7-session-first-consistency.css">
+  <link rel="stylesheet" href="./v7-settings-neutral-ui07.css">
 </head>
 <body>
   <div class="app-shell">
@@ -71,7 +78,7 @@
           <span id="theme-label">Dark</span>
         </button>
 
-        <button class="tool-button" id="tool-view-notification" title="Open View page and preview notification position">
+        <button class="tool-button" id="tool-view-notification" title="Open Appearance settings and preview notification position">
           <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></span>
           <span>Notification</span>
         </button>
@@ -91,11 +98,6 @@
         <button class="tool-button" id="tool-repair-settings" title="Repair missing connections from a valid local settings backup">
           <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v6h6"/><path d="M20 19v-6h-6"/><path d="M5.6 15.5A7 7 0 0 0 17.7 18"/><path d="M18.4 8.5A7 7 0 0 0 6.3 6"/></svg></span>
           <span>Repair Settings</span>
-        </button>
-
-        <button class="tool-button" id="tool-restore-settings" title="View local restore points and restore one safely">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M4 12a8 8 0 0 1 14-5"/><path d="M18 3v4h-4"/></svg></span>
-          <span>Restore Points</span>
         </button>
 
         <span class="toolbar-separator"></span>
@@ -122,7 +124,7 @@
           <span>Generate</span>
         </button>
 
-        <button class="tool-button terminal-action-button" id="tool-generate-ai-report" title="Generate an OpenAI-powered project work report from the active terminal location">
+        <button class="tool-button terminal-action-button" id="tool-generate-ai-report" title="Generate an AI project work report using the configured AI provider">
           <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.3 4.1L17 9l-3.7 1.9L12 15l-1.3-4.1L7 9l3.7-1.9z"/><path d="M5 14l.8 2.3L8 17.5l-2.2 1.2L5 21l-.8-2.3L2 17.5l2.2-1.2z"/><path d="M19 13l.8 2.3L22 16.5l-2.2 1.2L19 20l-.8-2.3L16 16.5l2.2-1.2z"/></svg></span>
           <span>AI Report</span>
         </button>
@@ -373,7 +375,8 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/><path d="M3 8V5h7l2 2"/></svg>
               </button>
               <div id="terminal-toolbar-actions" class="dynamic-toolbar-actions v7-composer-actions" aria-label="Terminal toolbar actions"></div>
-              <label class="v7-composer-automatic" title="When enabled, pasting text into the input submits it. Multi-line text still requires confirmation.">
+              <button id="v7-composer-multiline-toggle" type="button" class="v7-composer-multiline-toggle" aria-pressed="false" aria-controls="v7-composer-input" title="Expand editor; Enter adds a new line; Ctrl+Enter sends">Multi-line</button>
+              <label class="v7-composer-automatic" title="Auto-send single-line pastes only. Multi-line drafts always require a manual review and Send.">
                 <input id="v7-composer-auto-send" type="checkbox">
                 <span>Auto-send paste</span>
               </label>
@@ -384,99 +387,20 @@
                   <div id="v7-composer-ghost-line" class="v7-composer-ghost-line"><span id="v7-composer-ghost-typed" class="v7-composer-ghost-typed"></span><span id="v7-composer-ghost-suffix" class="v7-composer-ghost-suffix"></span></div>
                 </div>
                 <textarea id="v7-composer-input" rows="1" wrap="off" spellcheck="false" aria-autocomplete="inline"
-                  aria-label="Command input — Enter to send; Tab accepts gray suggestion"
-                  title="Enter to send · Tab to accept suggestion · Shift+Enter for new line"
+                  aria-label="Command input — Enter sends one line; Shift+Enter adds a line; Ctrl+Enter sends multi-line commands"
+                  title="Enter sends single-line · Shift+Enter adds a line · Multi-line mode: Ctrl+Enter sends"
                   placeholder="Type a command..."></textarea>
               </div>
               <button id="v7-composer-send" type="button" class="v7-composer-send" aria-label="Send command to active terminal" title="Send command (Enter)">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
               </button>
             </div>
+            <p id="v7-composer-multiline-hint" class="v7-composer-multiline-hint" hidden>Enter: new line · Ctrl+Enter: review and send · The shell may execute each command line.</p>
           </section>
         </div>
 
 
-        <div id="view-view" class="view">
-          <div class="content-header">
-            <div>
-              <div class="eyebrow">VIEW</div>
-              <h1>View & Layout</h1>
-            </div>
-            <div class="header-actions">
-              <button class="secondary-button" id="view-preview-notification" type="button">Preview Notification</button>
-            </div>
-          </div>
-
-          <div class="settings-layout page-layout">
-            <div class="settings-nav page-nav" aria-label="View pages">
-              <button class="page-tab view-tab active" data-view-tab="appearance" type="button">Appearance</button>
-            </div>
-
-            <div class="settings-content page-content">
-
-              <section id="view-tab-appearance" class="view-page-section active">
-                <div class="section-title">
-                  <div>
-                    <div class="eyebrow">VIEW PAGE</div>
-                    <h2>Appearance & Notifications</h2>
-                  </div>
-                </div>
-
-                <div class="windows-group">
-                  <p class="section-help">Choose the application color mode. This setting is saved locally.</p>
-
-                  <div class="form-grid">
-                    <label>
-                      <span>Color Mode</span>
-                      <select id="appearance-theme-select">
-                        <option value="light">Light Mode</option>
-                        <option value="dark">Dark Mode</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="windows-group notification-appearance-group">
-                  <div class="section-title compact">
-                    <div>
-                      <div class="eyebrow">NOTIFICATION APPEARANCE</div>
-                      <h3>Notification Location</h3>
-                    </div>
-                  </div>
-                  <p class="section-help">Reduce in-app popups without changing Windows desktop command-completion notifications.</p>
-
-                  <div class="form-grid">
-                    <label>
-                      <span>In-App Notifications</span>
-                      <select id="in-app-toast-mode-select">
-                        <option value="important">Important Only — Warnings &amp; Errors</option>
-                        <option value="errors">Errors Only</option>
-                        <option value="all">All Notifications</option>
-                        <option value="off">Off — Also Hides Errors</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>Toast Position</span>
-                      <select id="notification-position-select">
-                        <option value="top-left">Top Left</option>
-                        <option value="top-center">Top Center</option>
-                        <option value="top-right">Top Right</option>
-                        <option value="bottom-left">Bottom Left</option>
-                        <option value="bottom-center">Bottom Center</option>
-                        <option value="bottom-right">Bottom Right</option>
-                      </select>
-                    </label>
-
-                    <div class="form-inline-action">
-                      <span>Preview</span>
-                      <button id="notification-preview-button" class="secondary-button" type="button">Preview Notification</button>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
+        <div id="view-view" class="view" aria-hidden="true"></div>
 
 
         <div id="report-view" class="view">
@@ -607,30 +531,129 @@
         </div>
 
         <div id="settings-view" class="view">
-          <div class="content-header">
+          <div class="content-header at-settings-header">
             <div>
-              <div class="eyebrow">SETTINGS</div>
-              <h1>App Settings</h1>
-            </div>
-            <div class="header-actions">
-              <button class="secondary-button" id="settings-restore-main" title="View local restore points and restore one safely">Restore Points</button>
-              <button class="secondary-button" id="settings-repair-main" title="Repair missing connections from a valid local settings backup">Repair Settings</button>
-              <button class="secondary-button" id="settings-import-main" title="Import a safe Advance Terminal settings backup">Import Settings</button>
-              <button class="primary-button" id="settings-save-main" title="Export a safe backup copy of the app configuration">Export Settings</button>
+              <div class="eyebrow">PREFERENCES</div>
+              <h1>Settings</h1>
+              <p class="at-settings-subtitle">Find and change how Advance Terminal works.</p>
             </div>
           </div>
 
-          <div class="settings-layout">
-            <div class="settings-nav" aria-label="Settings tabs">
-              <button class="settings-tab active" data-settings-tab="safety">Terminal Safety</button>
-              <button class="settings-tab" data-settings-tab="restore">Restore Points</button>
-              <button class="settings-tab" data-settings-tab="terminal-actions">Terminal Actions</button>
-              <button class="settings-tab" data-settings-tab="ai">AI</button>
-              <button class="settings-tab" data-settings-tab="keys">SSH Keys</button>
-              <button class="settings-tab" data-settings-tab="updates">Updates</button>
-            </div>
+          <div class="settings-layout at-settings-layout">
+            <nav class="settings-nav at-settings-nav" aria-label="Settings categories">
+              <label class="at-settings-search-label" for="at-settings-search">Find a setting</label>
+              <div class="at-settings-search-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg>
+                <input id="at-settings-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search settings..." aria-controls="at-settings-search-results">
+              </div>
+              <div id="at-settings-search-results" class="at-settings-search-results" aria-label="Matching settings" aria-live="polite" hidden></div>
+              <label class="at-settings-picker-label" for="at-settings-picker">Category</label>
+              <select id="at-settings-picker" class="at-settings-picker" aria-label="Choose settings category">
+                <option value="appearance">Appearance &amp; notifications</option>
+                <option value="safety">Terminal safety</option>
+                <option value="terminal-actions">Terminal actions</option>
+                <option value="keys">SSH keys</option>
+                <option value="ai">AI</option>
+                <option value="recovery">Data &amp; recovery</option>
+                <option value="updates">Updates</option>
+              </select>
+              <div class="at-settings-nav-list">
+                <div class="at-settings-nav-heading">PREFERENCES</div>
+                <button type="button" class="settings-tab" data-settings-tab="appearance">
+                  <span class="at-settings-tab-title">Appearance</span>
+                  <span class="at-settings-tab-desc">Theme &amp; notifications</span>
+                </button>
+                <button type="button" class="settings-tab active" data-settings-tab="safety">
+                  <span class="at-settings-tab-title">Terminal safety</span>
+                  <span class="at-settings-tab-desc">Paste &amp; folder protection</span>
+                </button>
+                <button type="button" class="settings-tab" data-settings-tab="terminal-actions">
+                  <span class="at-settings-tab-title">Terminal actions</span>
+                  <span class="at-settings-tab-desc">Customize the toolbar</span>
+                </button>
+                <div class="at-settings-nav-heading">CONNECTIONS &amp; TOOLS</div>
+                <button type="button" class="settings-tab" data-settings-tab="keys">
+                  <span class="at-settings-tab-title">SSH keys</span>
+                  <span class="at-settings-tab-desc">Create &amp; manage keys</span>
+                </button>
+                <button type="button" class="settings-tab" data-settings-tab="ai">
+                  <span class="at-settings-tab-title">AI</span>
+                  <span class="at-settings-tab-desc">Providers &amp; project inspector</span>
+                </button>
+                <div class="at-settings-nav-heading">APPLICATION</div>
+                <button type="button" class="settings-tab" data-settings-tab="recovery">
+                  <span class="at-settings-tab-title">Data &amp; recovery</span>
+                  <span class="at-settings-tab-desc">Export, import, repair</span>
+                </button>
+                <button type="button" class="settings-tab" data-settings-tab="updates">
+                  <span class="at-settings-tab-title">Updates</span>
+                  <span class="at-settings-tab-desc">Version &amp; installation</span>
+                </button>
+              </div>
+            </nav>
 
             <div class="settings-content">
+
+              <section id="settings-tab-appearance" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">PREFERENCES</div>
+                    <h2>Appearance & Notifications</h2>
+                  </div>
+                </div>
+
+                <div class="windows-group">
+                  <p class="section-help">Choose the application color mode. This setting is saved locally.</p>
+
+                  <div class="form-grid">
+                    <label>
+                      <span>Color Mode</span>
+                      <select id="appearance-theme-select">
+                        <option value="light">Light Mode</option>
+                        <option value="dark">Dark Mode</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="windows-group notification-appearance-group">
+                  <div class="section-title compact">
+                    <div>
+                      <div class="eyebrow">NOTIFICATION APPEARANCE</div>
+                      <h3>Notification Location</h3>
+                    </div>
+                  </div>
+                  <p class="section-help">Reduce in-app popups without changing Windows desktop command-completion notifications.</p>
+
+                  <div class="form-grid">
+                    <label>
+                      <span>In-App Notifications</span>
+                      <select id="in-app-toast-mode-select">
+                        <option value="important">Important Only — Warnings &amp; Errors</option>
+                        <option value="errors">Errors Only</option>
+                        <option value="all">All Notifications</option>
+                        <option value="off">Off — Also Hides Errors</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Toast Position</span>
+                      <select id="notification-position-select">
+                        <option value="top-left">Top Left</option>
+                        <option value="top-center">Top Center</option>
+                        <option value="top-right">Top Right</option>
+                        <option value="bottom-left">Bottom Left</option>
+                        <option value="bottom-center">Bottom Center</option>
+                        <option value="bottom-right">Bottom Right</option>
+                      </select>
+                    </label>
+
+                    <div class="form-inline-action">
+                      <span>Preview</span>
+                      <button id="notification-preview-button" class="secondary-button" type="button">Preview Notification</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
               <section id="settings-tab-safety" class="settings-section active">
                 <div class="section-title">
@@ -682,26 +705,6 @@
                     Right-click auto-enter is disabled by default because it executes one-line clipboard commands immediately.
                     Keep multi-line confirmation and SSH folder lock enabled for safer command work.
                   </div>
-                </div>
-              </section>
-
-              <section id="settings-tab-restore" class="settings-section">
-                <div class="section-title">
-                  <div>
-                    <div class="eyebrow">SAFE RESTORE</div>
-                    <h2>Restore Points</h2>
-                  </div>
-                  <button class="secondary-button" id="restore-refresh-button" type="button">Refresh</button>
-                </div>
-
-                <div class="windows-group">
-                  <p class="section-help">
-                    Restore points are valid local settings backups only. The app skips corrupt, empty, unreadable, or non-settings files.
-                    Before restoring, it creates a new backup of your current settings.
-                  </p>
-
-                  <div id="restore-current-summary" class="restore-current-summary">Loading current settings...</div>
-                  <div id="restore-points-list" class="restore-points-list" aria-live="polite"></div>
                 </div>
               </section>
 
@@ -782,42 +785,49 @@
 <section id="settings-tab-ai" class="settings-section">
   <div class="section-title">
     <div>
-      <div class="eyebrow">OPENAI REPORTS</div>
+      <div class="eyebrow">LOCAL AI · LM STUDIO</div>
       <h2>AI Settings</h2>
     </div>
   </div>
 
   <div class="windows-group ai-settings-panel">
     <p class="section-help">
-      Enable OpenAI-powered reports for the project in the active terminal location. The API key is saved locally with Electron secure storage and is never exported with settings backups.
+      Use your LM Studio model for free local project analysis. The AI Report uses project metadata and terminal history; the project inspector can also read individual local source files that you choose. No commands or file edits run automatically.
     </p>
 
     <label class="report-option-row">
       <input id="ai-reports-enabled-toggle" type="checkbox">
       <span>
         <strong>Enable AI project reports</strong>
-        <small>Shows the AI Report action in the Report toolbar and allows OpenAI analysis when you click it.</small>
+        <small>Enables AI Report and the read-only project inspector. LM Studio runs locally without API charges.</small>
       </span>
     </label>
 
     <div class="form-grid ai-settings-grid">
       <label>
-        <span>OpenAI Model</span>
-        <input id="ai-openai-model" type="text" value="gpt-5.5" placeholder="gpt-5.5">
+        <span>AI Provider</span>
+        <select id="ai-provider-select">
+          <option value="lmstudio">LM Studio (free, on this PC)</option>
+          <option value="openai">OpenAI (existing API integration)</option>
+        </select>
       </label>
-
       <label>
+        <span>Model identifier</span>
+        <input id="ai-openai-model" type="text" value="qwen/qwen3.5-9b" list="ai-local-models" spellcheck="false" placeholder="qwen/qwen3.5-9b">
+        <datalist id="ai-local-models"></datalist>
+      </label>
+      <label id="ai-openai-key-row" hidden>
         <span>OpenAI API Key</span>
         <input id="ai-openai-api-key" type="password" placeholder="Paste key to save or leave blank">
       </label>
     </div>
 
-    <div class="ai-key-status" id="ai-openai-key-status">API key status: checking...</div>
+    <div class="ai-key-status" id="ai-openai-key-status" role="status">AI connection: checking...</div>
 
     <div class="form-actions compact-actions">
       <button class="primary-button" id="ai-save-settings" type="button">Save AI Settings</button>
-      <button class="secondary-button" id="ai-test-status" type="button">Check Status</button>
-      <button class="danger-button" id="ai-clear-api-key" type="button">Clear API Key</button>
+      <button class="secondary-button" id="ai-test-status" type="button">Check LM Studio / Provider</button>
+      <button class="danger-button" id="ai-clear-api-key" type="button" hidden>Clear API Key</button>
     </div>
 
     <label class="report-option-row">
@@ -837,7 +847,21 @@
     </label>
 
     <div class="inline-warning">
-      AI reports send selected project metadata to OpenAI only when you click AI Report. For remote SSH paths, local file scanning is unavailable, so the report uses terminal activity only.
+      LM Studio requests stay on 127.0.0.1:1234. The optional OpenAI provider sends report context to its cloud API. SSH sessions only provide visible terminal activity until separate remote inspection tools are added. KapeCueAI is excluded.
+    </div>
+
+    <div class="ai-project-inspector">
+      <div class="eyebrow">READ-ONLY PROJECT INSPECTOR</div>
+      <label class="section-help" for="ai-project-question">Ask your local AI to examine the active terminal project and recommend focused fixes. It does not execute commands or change files.</label>
+      <textarea id="ai-project-question" rows="3" placeholder="Example: What could be causing the login controller to return a 500 error?" spellcheck="true"></textarea>
+      <label for="ai-project-paths">Optional source file paths, relative to the project root (max 5, comma or new line separated)</label>
+      <textarea id="ai-project-paths" rows="2" placeholder="app/Http/Controllers/LoginController.php
+routes/web.php" spellcheck="false"></textarea>
+      <div class="form-actions compact-actions">
+        <button class="primary-button" id="ai-project-inspect" type="button">Analyze Active Project</button>
+        <button class="secondary-button" id="ai-project-copy" type="button">Copy Analysis</button>
+      </div>
+      <textarea id="ai-project-answer" rows="12" readonly aria-label="Local AI project analysis" placeholder="LM Studio analysis appears here..."></textarea>
     </div>
   </div>
 </section>
@@ -959,7 +983,7 @@
   <div class="section-title compact update-card-header">
     <div>
       <div class="eyebrow">APP UPDATES</div>
-      <h3>Auto Update</h3>
+      <h3>Application Update</h3>
     </div>
     <span id="update-status-pill" class="update-status-pill update-status-idle">Idle</span>
   </div>
@@ -982,6 +1006,31 @@
     <button class="primary-button hidden" id="install-update-button" type="button">Install and Restart</button>
   </div>
 </div>
+              </section>
+
+              <section id="settings-tab-recovery" class="settings-section">
+                <div class="section-title">
+                  <div>
+                    <div class="eyebrow">DATA MANAGEMENT</div>
+                    <h2>Data &amp; Recovery</h2>
+                  </div>
+                </div>
+                <p class="at-settings-section-intro">Manage a settings backup or repair missing connection entries. Existing SSH keys and terminal sessions are not managed here.</p>
+                <div class="at-recovery-actions">
+                  <div class="at-recovery-row">
+                    <div><h3>Export settings</h3><p>Save a portable copy of your app configuration for safekeeping.</p></div>
+                    <button class="primary-button" id="settings-save-main" type="button" title="Export a safe backup copy of the app configuration">Export Settings</button>
+                  </div>
+                  <div class="at-recovery-row">
+                    <div><h3>Import settings</h3><p>Choose an existing Advance Terminal settings backup. Review the confirmation before importing.</p></div>
+                    <button class="secondary-button" id="settings-import-main" type="button" title="Import a safe Advance Terminal settings backup">Import Settings</button>
+                  </div>
+                  <div class="at-recovery-row">
+                    <div><h3>Repair settings</h3><p>Attempt to recover missing connection entries from a valid local backup.</p></div>
+                    <button class="secondary-button" id="settings-repair-main" type="button" title="Repair missing connections from a valid local settings backup">Repair Settings</button>
+                  </div>
+                </div>
+                <p class="at-settings-safety-note">Automatic settings snapshots are disabled. Import and repair are manual actions; do not import an untrusted backup.</p>
               </section>
             </div>
           </div>
@@ -1006,7 +1055,7 @@
               <button class="help-tab" data-help-tab="commands" type="button">Commands</button>
               <button class="help-tab" data-help-tab="ssh-keys" type="button">SSH Keys</button>
               <button class="help-tab" data-help-tab="safety" type="button">Terminal Safety</button>
-              <button class="help-tab" data-help-tab="restore" type="button">Restore / Repair</button>
+              <button class="help-tab" data-help-tab="recovery" type="button">Backup & Repair</button>
               <button class="help-tab" data-help-tab="ai" type="button">AI Reports</button>
               <button class="help-tab" data-help-tab="reports" type="button">Reports</button>
               <button class="help-tab" data-help-tab="view" type="button">View</button>
@@ -1024,7 +1073,7 @@
                     <h2>Advance Terminal V7</h2>
                     <p>Developer: <strong id="about-help-developer">Artlie Digital</strong></p>
                     <p>Website: <strong id="about-help-website">www.artliedigital.com</strong></p>
-                    <p>Advance Terminal is a Windows desktop terminal for local shells, SSH servers, saved commands, restore points, AI reports, and safer day-to-day project work.</p>
+                    <p>Advance Terminal is a Windows desktop terminal for local shells, SSH servers, saved commands, AI reports, and safer day-to-day project work.</p>
 
                     <div class="about-quick-grid">
                       <div>
@@ -1041,7 +1090,7 @@
                       </div>
                       <div>
                         <span>Recover settings</span>
-                        <strong><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Go to Settings → Restore Points</button></strong>
+                        <strong><button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button></strong>
                       </div>
                       <div>
                         <span>Reports</span>
@@ -1099,13 +1148,13 @@
                     <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Go to Settings → Terminal Safety</button></p>
                   </div>
                   <div class="help-mini-card">
-                    <h3>Restore & Repair</h3>
-                    <p>Use restore points and valid settings backups to recover missing servers safely.</p>
-                    <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Go to Settings → Restore Points</button></p>
+                    <h3>Backup & Repair</h3>
+                    <p>Export settings manually and use valid local backups to repair missing connections.</p>
+                    <p><button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button></p>
                   </div>
                   <div class="help-mini-card">
                     <h3>AI Reports</h3>
-                    <p>Use OpenAI settings to generate a project-work report from the active terminal context.</p>
+                    <p>Use AI settings to generate a project-work report from the active terminal context.</p>
                     <p><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="ai">Go to Settings → AI</button></p>
                   </div>
                 </div>
@@ -1204,20 +1253,19 @@
                 </div>
               </section>
 
-              <section id="help-tab-restore" class="help-section">
+              <section id="help-tab-recovery" class="help-section">
                 <div class="section-title">
                   <div>
                     <div class="eyebrow">RECOVERY</div>
-                    <h2>Restore, Repair, Import & Export</h2>
+                    <h2>Repair, Import & Export</h2>
                   </div>
                 </div>
                 <div class="windows-group">
                   <ul class="about-feature-list">
-                    <li><button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Settings → Restore Points</button> shows local settings restore points with date, file name, connection count, and preview.</li>
                     <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button> restores missing connections only from valid readable backups.</li>
                     <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="export-settings">Export Settings</button> saves a safe backup of your app configuration.</li>
                     <li><button class="help-link" type="button" data-help-nav="settings" data-help-action="import-settings">Import Settings</button> imports a backup after previewing it.</li>
-                    <li>Auto-backup runs at startup, before/after settings saves, and on normal close. Force close or power loss cannot always run close handlers, so startup/save backups are important.</li>
+                    <li>Automatic restore-point backups are disabled. Export settings manually when you need a separate backup.</li>
                     <li>Exports skip passwords, passphrases, private keys, report history, and usage data.</li>
                   </ul>
                 </div>
@@ -1269,7 +1317,7 @@
                 </div>
                 <div class="windows-group">
                   <ul class="about-feature-list">
-                    <li>Use <button class="help-link" type="button" data-help-nav="view">View → Appearance</button> to change light/dark mode and notification position.</li>
+                    <li>Use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="appearance">Settings → Appearance</button> to change light/dark mode and notification position.</li>
                     <li>The Connections panel is shown on the Terminal page and hidden on View, Settings, Report, and Help pages.</li>
                     <li>The left Connections scrollbar is slim, and group headers show pinned and grouped servers.</li>
                     <li>The Terminal tab row uses neutral active styling and slide-only drag/reorder.</li>
@@ -1303,8 +1351,8 @@
                   </div>
                 </div>
                 <div class="windows-group">
-                  <p class="section-help">This legacy Help toolbar button now points to the full restore guide.</p>
-                  <p><button class="help-link" type="button" data-help-nav="help" data-help-tab-target="restore">Go to Restore / Repair Guide</button></p>
+                  <p class="section-help">This legacy Help toolbar button now points to the backup and repair guide.</p>
+                  <p><button class="help-link" type="button" data-help-nav="help" data-help-tab-target="recovery">Go to Backup & Repair Guide</button></p>
                 </div>
               </section>
 
@@ -1321,7 +1369,7 @@
                     <li><strong>SSH opens blank:</strong> update to the latest build with the safe sender fix, then reconnect.</li>
                     <li><strong>Wrong folder:</strong> edit the connection start folder from <button class="help-link" type="button" data-help-nav="terminal" data-help-action="open-connections">Terminal → Manage Connections</button>.</li>
                     <li><strong>Cannot leave folder:</strong> disable or adjust <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="safety">Settings → Terminal Safety</button> only when you intentionally need to leave the start folder.</li>
-                    <li><strong>Missing servers:</strong> use <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="restore">Settings → Restore Points</button> or <button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button>.</li>
+                    <li><strong>Missing servers:</strong> use <button class="help-link" type="button" data-help-nav="settings" data-help-action="repair-settings">Repair Settings</button> with an existing valid settings backup.</li>
                     <li><strong>AI report not working:</strong> enable AI and save the key in <button class="help-link" type="button" data-help-nav="settings" data-settings-tab="ai">Settings → AI</button>.</li>
                   </ul>
                 </div>
@@ -1755,5 +1803,7 @@
   <script src="./renderer.js"></script>
   <script src="./js/v7-command-autocomplete.js"></script>
   <script src="./v7-frameless-titlebar.js"></script>
+  <script src="./v7-settings-redesign.js"></script>
+  <script src="./v7-settings-expand.js"></script>
 </body>
 </html>

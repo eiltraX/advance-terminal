@@ -1,0 +1,47 @@
+/* UI05B — Maintain original tree alignment; connect segments in the gutter.
+   Do not override `left`, `right`, `transform`, colors or the original child elbow:
+   those are owned by v7-minimal-shell.css. */
+#v7-session-list .v7-session-row.is-child::before {
+  top: calc(-50% - 7px);
+  bottom: 50%;
+  height: auto;
+  pointer-events: none;
+}
+/* First child starts below its parent card, never through the parent. */
+#v7-session-list .v7-session-row.is-child.v7-tree-first::before {
+  top: -7px;
+}
+/* Subtree landing strip overlays the space below the last child, without
+   affecting normal sidebar spacing or receiving input outside a drag. */
+#v7-session-list .v7-session-row.v7-tree-last > .v7-session-after-root-target {
+  display: none;
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  right: 0;
+  top: calc(100% - 2px);
+  height: 8px;
+  cursor: grabbing;
+}
+#v7-session-list.is-session-dragging .v7-session-row.v7-tree-last > .v7-session-after-root-target.is-active {
+  display: block;
+}
+/* Only the final group gets a wide blank-space landing area. */
+#v7-session-list.is-session-dragging .v7-session-row.v7-tree-last:last-child > .v7-session-after-root-target.is-active {
+  height: 28px;
+}
+#v7-session-list .v7-session-after-root-target.is-drop-target::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 6px;
+  height: 2px;
+  background: #68aaff;
+  border-radius: 2px;
+  pointer-events: none;
+}
+/* Highlight only the card edge. Do not take over `::after` (the tree elbow). */
+#v7-session-list .v7-session-row.is-child.is-drop-after-tree > .v7-session-item {
+  box-shadow: inset 0 -2px 0 #68aaff;
+}

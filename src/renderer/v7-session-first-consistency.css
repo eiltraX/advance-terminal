@@ -1,0 +1,217 @@
+/* UI06 — Session-first visual consistency. Presentation only.
+   Match the approved compact Sessions density, not the older large Settings cards.
+   Preserve session-tree connectors, drag targets, the live xterm canvas and panel grid.
+*/
+:root {
+  --at-ui-font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --at-ui-text: 11.5px;
+  --at-ui-muted: 10.5px;
+  --at-ui-label: 10px;
+  --at-ui-heading: 14px;
+  --at-ui-control: 32px;
+  --at-ui-gap-xs: 4px;
+  --at-ui-gap-sm: 6px;
+  --at-ui-gap-md: 10px;
+  --at-ui-gap-lg: 16px;
+  --at-ui-radius: 6px;
+}
+/* Shared interface typography only: do not touch xterm's monospace rendering,
+   the session row layout, or the draggable Settings divider. */
+:is(.v7-session-sidebar, .v7-workspace-flyout, .v7-shell-menu,
+    .v7-header-popup, .v7-global-results, .v7-new-session-menu,
+    .v7-command-composer, .statusbar) {
+  font-family: var(--at-ui-font);
+}
+:is(.v7-flyout-heading, .v7-header-popup, .v7-shell-menu,
+    .v7-global-results, .v7-new-session-menu) {
+  font-size: var(--at-ui-text);
+  line-height: 1.45;
+}
+.v7-flyout-heading {
+  gap: var(--at-ui-gap-sm);
+}
+.v7-flyout-content :is(.server-list, .command-list, .left-tab-panel) {
+  font-size: var(--at-ui-text);
+  line-height: 1.45;
+}
+/* Navigation and settings adopt the Sessions sidebar's compact visual rhythm. */
+#settings-view {
+  font-family: var(--at-ui-font);
+  font-size: var(--at-ui-text);
+  line-height: 1.45;
+  --at-control-height: var(--at-ui-control);
+  --at-card-radius: var(--at-ui-radius);
+}
+#settings-view .at-settings-nav {
+  gap: var(--at-ui-gap-sm);
+  padding: var(--at-ui-gap-md);
+}
+#settings-view .at-settings-nav-list { gap: var(--at-ui-gap-xs); }
+#settings-view .at-settings-nav-heading,
+#settings-view .at-settings-picker-label,
+#settings-view .at-settings-search-label {
+  font-size: var(--at-ui-label);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: .045em;
+}
+#settings-view .at-settings-nav-heading { margin: var(--at-ui-gap-md) var(--at-ui-gap-sm) var(--at-ui-gap-xs); }
+#settings-view .at-settings-nav-list .settings-tab {
+  box-sizing: border-box;
+  min-height: 42px;
+  height: auto;
+  margin: 0;
+  padding: 8px var(--at-ui-gap-md);
+  border-radius: var(--at-ui-radius);
+}
+#settings-view .at-settings-nav-list .settings-tab.active { padding-left: 7px; }
+#settings-view .at-settings-tab-title { font-size: var(--at-ui-text); font-weight: 600; line-height: 1.35; }
+#settings-view .at-settings-tab-desc { font-size: var(--at-ui-muted); line-height: 1.4; margin-top: 2px; }
+#settings-view #at-settings-search,
+#settings-view .at-settings-picker,
+.v7-flyout-content #settings-view .at-settings-picker {
+  height: var(--at-ui-control);
+  min-height: var(--at-ui-control);
+  padding: 6px 9px;
+  font-size: var(--at-ui-text);
+  border-radius: var(--at-ui-radius);
+}
+#settings-view .at-settings-search-wrap svg { width: 14px; height: 14px; }
+#settings-view .at-settings-search-results { padding-top: var(--at-ui-gap-sm); }
+#settings-view .at-settings-result { min-height: var(--at-ui-control); padding: var(--at-ui-gap-md); }
+#settings-view .at-settings-result small { font-size: var(--at-ui-muted); }
+/* Content area: same compact titles, margins, borders and text sizes. */
+.v7-flyout-content #settings-view > .at-settings-layout > .settings-content {
+  padding: 10px 12px;
+}
+.workspace.v7-settings-wide .v7-flyout-content #settings-view > .at-settings-layout > .settings-content {
+  padding: 14px 16px;
+}
+#settings-view .settings-section > .section-title { margin: 0 0 var(--at-ui-gap-md); }
+#settings-view .settings-section > .section-title h2 {
+  margin: 0;
+  font-size: var(--at-ui-heading);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+}
+#settings-view .settings-section .eyebrow {
+  font-size: var(--at-ui-label);
+  font-weight: 600;
+  letter-spacing: .055em;
+  line-height: 1.3;
+  margin-bottom: var(--at-ui-gap-xs);
+}
+#settings-view .settings-section .section-subtitle { margin-bottom: var(--at-ui-gap-md); }
+#settings-view .settings-section .section-subtitle h3 { font-size: 12px; }
+#settings-view .settings-section .windows-group {
+  padding: 12px;
+  margin-top: var(--at-ui-gap-md);
+  border-radius: 7px;
+}
+.v7-flyout-content #settings-view .settings-section .windows-group { padding: 12px; }
+#settings-view .settings-section .section-help,
+#settings-view .at-settings-section-intro {
+  margin: 0 0 var(--at-ui-gap-md);
+  font-size: var(--at-ui-text);
+  line-height: 1.5;
+}
+#settings-view .form-grid,
+#settings-view .mini-grid,
+#settings-view .ai-settings-panel,
+#settings-view .at-recovery-actions,
+#settings-view .ssh-key-list,
+#settings-view .ssh-key-help-grid { gap: var(--at-ui-gap-md); }
+#settings-view .mini-grid { margin-top: var(--at-ui-gap-md); }
+#settings-view label:not(.check-row):not(.report-option-row) { gap: var(--at-ui-gap-xs); }
+#settings-view label > span:first-child { font-size: var(--at-ui-text); line-height: 1.35; }
+#settings-view input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+#settings-view select {
+  min-height: var(--at-ui-control);
+  height: var(--at-ui-control);
+  padding: 6px 9px;
+  font-size: var(--at-ui-text);
+  line-height: 1.35;
+  border-radius: var(--at-ui-radius);
+}
+#settings-view textarea {
+  padding: 9px;
+  font-size: var(--at-ui-text);
+  line-height: 1.45;
+  border-radius: var(--at-ui-radius);
+}
+#settings-view :is(.primary-button, .secondary-button, .danger-button, .input-with-button button) {
+  min-height: var(--at-ui-control);
+  height: auto;
+  padding: 6px 10px;
+  font-size: var(--at-ui-text);
+  line-height: 1.35;
+  border-radius: var(--at-ui-radius);
+}
+#settings-view :is(.form-actions,.inline-actions,.update-actions,.ssh-key-actions,.compact-actions) {
+  gap: var(--at-ui-gap-sm);
+}
+#settings-view .form-actions { margin-top: var(--at-ui-gap-md); }
+/* Settings toggles become uniform rows, not three oversized independent cards.
+   Keep native checkboxes and the existing labels/handlers. */
+#settings-view .report-option-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0,1fr);
+  align-items: start;
+  gap: var(--at-ui-gap-md);
+  min-width: 0;
+  padding: 10px 6px;
+  margin: 0;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid var(--win-border, #35383e);
+  border-radius: 0;
+  background: transparent;
+  transition: background-color 130ms ease;
+}
+#settings-view .report-option-row:hover { background: color-mix(in srgb, var(--win-text) 3%, transparent); }
+#settings-view .report-option-row:last-of-type { border-bottom: 0; }
+#settings-view .report-option-row input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+}
+#settings-view .report-option-row > span { min-width: 0; }
+#settings-view .report-option-row strong {
+  color: var(--win-text);
+  font-size: var(--at-ui-text);
+  font-weight: 600;
+  line-height: 1.4;
+}
+#settings-view .report-option-row small {
+  display: block;
+  margin-top: var(--at-ui-gap-xs);
+  color: var(--win-muted);
+  font-size: var(--at-ui-muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+#settings-view .check-row { padding-top: var(--at-ui-gap-sm); gap: var(--at-ui-gap-sm); }
+#settings-view .check-row input[type="checkbox"] { width: 16px; height: 16px; }
+#settings-view .inline-note {
+  font-size: var(--at-ui-muted);
+  line-height: 1.5;
+  padding: 9px 0 0;
+  margin-top: var(--at-ui-gap-md);
+}
+#settings-view .at-recovery-row,
+#settings-view .ssh-help-card,
+#settings-view .ssh-key-row { padding: 12px; gap: var(--at-ui-gap-md); border-radius: 7px; }
+#settings-view .at-recovery-row h3 { font-size: 12px; }
+#settings-view .at-recovery-row p,
+#settings-view .ssh-help-card li,
+#settings-view .at-settings-safety-note { font-size: var(--at-ui-muted); line-height: 1.5; }
+#settings-view .at-settings-safety-note { margin-top: var(--at-ui-gap-md); padding: 10px; }
+#settings-view .terminal-action-list-item { margin-bottom: var(--at-ui-gap-xs); }
+#settings-view .terminal-action-list-buttons { gap: var(--at-ui-gap-xs); padding: var(--at-ui-gap-sm); }
+#settings-view .update-status-box > div { padding: 10px; }
+/* Keep the responsive category picker, original panel widths and original tree. */
+@media (prefers-reduced-motion: reduce) {
+  #settings-view .report-option-row { transition: none !important; }
+}

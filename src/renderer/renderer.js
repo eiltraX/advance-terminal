@@ -131,8 +131,6 @@ const state = {
   settings: null,
   appInfo: null,
   updateStatus: null,
-  settingsRestorePoints: [],
-  settingsRestoreSummary: null,
   aiStatus: null,
   selectedServerId: null,
   activeView: 'terminal',
@@ -178,9 +176,11 @@ const state = {
   usagePersistTimer: null,
   usagePersistInFlight: false,
   usagePersistAgain: false,
+  usageRevision: 0,
+  usageLastSavedAt: 0,
   settingsSaveTimer: null,
   settingsSaveInFlight: false,
-  settingsSaveAgain: false,
+  settingsSaveBatch: null,
   busyActions: new Set(),
   connectionAttemptInFlight: false,
   connectionHealthCheckInFlight: null,
@@ -207,7 +207,8 @@ const LIVE_CONSOLE_OUTPUT_FLUSH_MS = 450;
 const LIVE_PROCESS_MAX_ENTRIES = 8;
 const OUTPUT_ACTIVITY_BUFFER_LIMIT = 24000;
 const OUTPUT_ACTIVITY_FLUSH_MS = 250;
-const USAGE_SAVE_DEBOUNCE_MS = 2500;
+const USAGE_SAVE_DEBOUNCE_MS = 8000;
+const USAGE_SAVE_MIN_INTERVAL_MS = 30000;
 const SETTINGS_SAVE_DEBOUNCE_MS = 800;
 const CONNECTIONS_PANEL_COLLAPSED_STORAGE_KEY = 'advanceTerminal.connectionsPanelCollapsed';
 const PINNED_CONNECTIONS_STORAGE_KEY = 'advanceTerminal.pinnedConnections';
@@ -2066,10 +2067,12 @@ function getAiSettingsClient() {
     ? state.settings.ai
     : {};
 
+  const provider = source.provider === 'openai' ? 'openai' : 'lmstudio';
+  const defaultModel = provider === 'openai' ? 'gpt-5.5' : 'qwen/qwen3.5-9b';
   return {
     enabled: source.enabled === true,
-    provider: 'openai',
-    model: String(source.model || 'gpt-5.5').trim().replace(/\s+/g, '') || 'gpt-5.5',
+    provider,
+    model: String(source.model || defaultModel).trim().replace(/\s+/g, '') || defaultModel,
     includeGitDiff: source.includeGitDiff === true,
     includeRecentCommands: source.includeRecentCommands !== false
   };
@@ -2077,41 +2080,54 @@ function getAiSettingsClient() {
 
 function updateAiSettingsControls() {
   const settings = getAiSettingsClient();
+  const isLocal = settings.provider === 'lmstudio';
   const enabledToggle = $('#ai-reports-enabled-toggle');
   const modelInput = $('#ai-openai-model');
+  const providerSelect = $('#ai-provider-select');
   const commandsToggle = $('#ai-include-commands-toggle');
   const diffToggle = $('#ai-include-git-diff-toggle');
   const statusEl = $('#ai-openai-key-status');
 
-  if (enabledToggle) {
-    enabledToggle.checked = settings.enabled;
+  if (enabledToggle) enabledToggle.checked = settings.enabled;
+  if (providerSelect) providerSelect.value = settings.provider;
+  if (modelInput) modelInput.value = settings.model;
+  if (commandsToggle) commandsToggle.checked = settings.includeRecentCommands;
+  if (diffToggle) diffToggle.checked = settings.includeGitDiff;
+  $('#ai-openai-key-row')?.toggleAttribute('hidden', isLocal);
+  $('#ai-clear-api-key')?.toggleAttribute('hidden', isLocal);
+  const modelsList = $('#ai-local-models');
+  if (modelsList) {
+    modelsList.replaceChildren();
+    if (isLocal) (state.aiStatus?.availableModels || []).forEach((model) => {
+      const option = document.createElement('option');
+      option.value = model;
+      modelsList.appendChild(option);
+    });
   }
 
-  if (modelInput) {
-    modelInput.value = settings.model;
-  }
-
-  if (commandsToggle) {
-    commandsToggle.checked = settings.includeRecentCommands;
-  }
-
-  if (diffToggle) {
-    diffToggle.checked = settings.includeGitDiff;
-  }
-
+  const hasKey = state.aiStatus?.hasApiKey === true;
+  const available = isLocal
+    ? state.aiStatus?.connected === true && state.aiStatus?.modelAvailable === true
+    : hasKey;
   if (statusEl) {
-    const hasKey = state.aiStatus?.hasApiKey === true;
-    const secure = state.aiStatus?.secretStorage?.available === true;
-    statusEl.textContent = hasKey
-      ? `API key saved locally${secure ? ' with secure storage' : ''}.`
-      : 'No OpenAI API key saved.';
-    statusEl.classList.toggle('ok', hasKey);
-    statusEl.classList.toggle('warning', !hasKey);
+    const models = state.aiStatus?.availableModels || [];
+    statusEl.textContent = isLocal
+      ? !state.aiStatus?.connected
+        ? (state.aiStatus?.connectionError || 'LM Studio offline. Start Local Server at 127.0.0.1:1234.')
+        : available
+          ? `LM Studio connected at 127.0.0.1:1234. Model ${settings.model} available (${models.length} listed).`
+          : `LM Studio connected. Model ${settings.model} not listed. Select a loaded model (${models.join(', ') || 'none'}).`
+      : hasKey
+        ? 'OpenAI API key saved locally.'
+        : 'OpenAI API key not saved. Choose LM Studio for free local inference.';
+    statusEl.classList.toggle('ok', available);
+    statusEl.classList.toggle('warning', !available);
   }
 
-  const aiButtonsDisabled = !settings.enabled || state.aiStatus?.hasApiKey !== true;
+  const aiButtonsDisabled = !settings.enabled || !available;
   $('#tool-generate-ai-report')?.toggleAttribute('disabled', aiButtonsDisabled);
   $('#session-report-ai-generate')?.toggleAttribute('disabled', aiButtonsDisabled);
+  $('#ai-project-inspect')?.toggleAttribute('disabled', !settings.enabled || !isLocal || !available);
 }
 
 async function refreshAiStatus({ silent = false } = {}) {
@@ -2135,7 +2151,9 @@ async function refreshAiStatus({ silent = false } = {}) {
     updateAiSettingsControls();
 
     if (!silent) {
-      showToast(state.aiStatus.hasApiKey ? 'AI status ready. API key is saved.' : 'AI status ready. Add an OpenAI API key.', 4000, state.aiStatus.hasApiKey ? 'success' : 'warning');
+      const local = getAiSettingsClient().provider === 'lmstudio';
+      const ready = local ? state.aiStatus?.connected && state.aiStatus?.modelAvailable : state.aiStatus?.hasApiKey;
+      showToast(ready ? (local ? 'LM Studio model ready.' : 'OpenAI key saved.') : (local ? 'LM Studio model is not available.' : 'Add an OpenAI API key.'), 4500, ready ? 'success' : 'warning');
     }
 
     return state.aiStatus;
@@ -2160,12 +2178,14 @@ async function saveAiSettingsFromControls() {
     return;
   }
 
-  const apiKey = $('#ai-openai-api-key')?.value.trim() || '';
-  const model = ($('#ai-openai-model')?.value || 'gpt-5.5').trim().replace(/\s+/g, '') || 'gpt-5.5';
+  const provider = $('#ai-provider-select')?.value === 'openai' ? 'openai' : 'lmstudio';
+  const apiKey = provider === 'openai' ? ($('#ai-openai-api-key')?.value.trim() || '') : '';
+  const fallbackModel = provider === 'openai' ? 'gpt-5.5' : 'qwen/qwen3.5-9b';
+  const model = ($('#ai-openai-model')?.value || fallbackModel).trim().replace(/\s+/g, '') || fallbackModel;
 
   state.settings.ai = {
     enabled: $('#ai-reports-enabled-toggle')?.checked === true,
-    provider: 'openai',
+    provider,
     model,
     includeRecentCommands: $('#ai-include-commands-toggle')?.checked !== false,
     includeGitDiff: $('#ai-include-git-diff-toggle')?.checked === true
@@ -2269,8 +2289,11 @@ async function generateAiProjectReport() {
 
     await refreshAiStatus({ silent: true });
 
-    if (state.aiStatus?.hasApiKey !== true) {
-      showToast('Add your OpenAI API key in Settings → AI first.', 7000, 'warning');
+    const ready = aiSettings.provider === 'lmstudio'
+      ? state.aiStatus?.connected === true && state.aiStatus?.modelAvailable === true
+      : state.aiStatus?.hasApiKey === true;
+    if (!ready) {
+      showToast(aiSettings.provider === 'lmstudio' ? 'Load the selected model in LM Studio, then check AI status.' : 'Add your OpenAI API key in Settings → AI first.', 7000, 'warning');
       setActiveView('settings', 'settings');
       setSettingsTab('ai');
       return;
@@ -2297,7 +2320,7 @@ async function generateAiProjectReport() {
 
       const generatedLabel = new Date(result.generatedAt || Date.now()).toLocaleString();
       const header = [
-        `Generated by OpenAI (${result.model || aiSettings.model})`,
+        `Generated by ${aiSettings.provider === 'lmstudio' ? 'local LM Studio' : 'OpenAI'} (${result.model || aiSettings.model})`,
         result.localProjectReadable ? `Project root: ${result.projectRoot || 'Detected project'}` : 'Project files were not readable locally; terminal activity was used.',
         result.gitAvailable ? `Git snapshot included${result.diffIncluded ? ' with redacted diff details' : ' without diff details'}.` : 'Git snapshot was not available.',
         ''
@@ -2339,18 +2362,60 @@ async function generateAiProjectReport() {
   });
 }
 
+async function inspectActiveProjectWithLocalAi() {
+  const button = $('#ai-project-inspect');
+  const answer = $('#ai-project-answer');
+  const question = $('#ai-project-question')?.value.trim() || '';
+  const session = getActiveAiReportSession();
+  if (!session) {
+    showToast('Select a local or SSH terminal session first.', 6000, 'warning');
+    return;
+  }
+  if (!question) {
+    showToast('Enter a question for the project inspector.', 4500, 'warning');
+    return;
+  }
+  if (getAiSettingsClient().provider !== 'lmstudio') {
+    showToast('Select LM Studio as your AI provider first.', 4500, 'warning');
+    return;
+  }
+  button.disabled = true;
+  answer.value = 'Reading available project evidence and asking LM Studio...';
+  try {
+    const payload = collectAiProjectReportPayload();
+    // Send no report text; backend only needs the selected terminal and command context.
+    delete payload.baseReport;
+    payload.question = question;
+    payload.sourcePaths = $('#ai-project-paths')?.value || '';
+    const result = await window.advanceTerminal.inspectAiProject(payload);
+    if (!result?.ok) throw new Error(result?.error || 'No analysis was returned.');
+    answer.value = result.text;
+    if (result.remoteLimited) {
+      showToast('Analysis completed using terminal activity only; remote source files were not read.', 6500, 'warning');
+    } else {
+      showToast('Read-only project analysis completed.', 3500, 'success');
+    }
+  } catch (error) {
+    answer.value = `LM Studio analysis failed: ${error.message}`;
+    showToast(`LM Studio: ${error.message}`, 8500, 'error');
+  } finally {
+    button.disabled = false;
+    updateAiSettingsControls();
+  }
+}
+
 function getTodayUsageDay() {
-  if (!state.settings) {
-    return createEmptyReportDay();
-  }
-
-  state.settings.reportUsage = normalizeReportUsageClient(state.settings.reportUsage);
+  if (!state.settings) return createEmptyReportDay();
   const today = todayReportDateKey();
-
-  if (!state.settings.reportUsage.days[today]) {
-    state.settings.reportUsage.days[today] = createEmptyReportDay(today);
+  const usage = state.settings.reportUsage;
+  // This is called for terminal output and input. Normalizing 90 days of
+  // report history on every chunk was unnecessary and became costly over time.
+  if (!usage || typeof usage !== 'object' || !usage.days || !usage.days[today]) {
+    state.settings.reportUsage = normalizeReportUsageClient(usage);
+    if (!state.settings.reportUsage.days[today]) {
+      state.settings.reportUsage.days[today] = createEmptyReportDay(today);
+    }
   }
-
   return state.settings.reportUsage.days[today];
 }
 
@@ -2407,51 +2472,67 @@ function clearStaleActiveSessionsForNewRun() {
   state.settings.reportUsage = usage;
 }
 
+function scheduleUsagePersist() {
+  if (state.usagePersistTimer || state.usagePersistInFlight) {
+    if (state.usagePersistInFlight) state.usagePersistAgain = true;
+    return;
+  }
+  const sinceLastSave = Date.now() - Number(state.usageLastSavedAt || 0);
+  const delay = Math.max(USAGE_SAVE_DEBOUNCE_MS, USAGE_SAVE_MIN_INTERVAL_MS - sinceLastSave);
+  state.usagePersistTimer = setTimeout(() => {
+    state.usagePersistTimer = null;
+    persistReportUsage().catch((error) => {
+      showToast(`Activity report save failed: ${error.message}`, 7000, 'error');
+    });
+  }, delay);
+}
+
 function markUsageDirty(persistSoon = true) {
   const day = getTodayUsageDay();
   day.updatedAt = new Date().toISOString();
-
-  if (!persistSoon) {
-    return;
-  }
-
-  clearTimeout(state.usagePersistTimer);
-  state.usagePersistTimer = setTimeout(() => {
-    persistReportUsage().catch(() => {});
-  }, USAGE_SAVE_DEBOUNCE_MS);
+  state.usageRevision += 1;
+  if (persistSoon) scheduleUsagePersist();
 }
 
 async function persistReportUsage() {
-  if (!state.settings || !window.advanceTerminal?.saveSettings) {
-    return;
-  }
+  if (!state.settings || !window.advanceTerminal?.saveSettings) return;
 
   if (state.usagePersistTimer) {
     clearTimeout(state.usagePersistTimer);
     state.usagePersistTimer = null;
   }
-
   if (state.usagePersistInFlight) {
     state.usagePersistAgain = true;
     return;
   }
 
   state.usagePersistInFlight = true;
-
+  const submittedRevision = state.usageRevision;
   try {
-    state.settings.reportUsage = normalizeReportUsageClient(state.settings.reportUsage);
-
+    const usageToSave = normalizeReportUsageClient(state.settings.reportUsage);
+    // Send a separate report payload: settings saves may occur simultaneously.
     if (window.advanceTerminal.saveReportUsage) {
-      state.settings.reportUsage = await window.advanceTerminal.saveReportUsage(state.settings.reportUsage);
+      const persisted = await window.advanceTerminal.saveReportUsage(usageToSave);
+      if (state.usageRevision === submittedRevision) {
+        state.settings.reportUsage = persisted;
+      } else {
+        // Usage changed during IPC; keep the newer in-memory counters.
+        state.usagePersistAgain = true;
+      }
     } else {
-      state.settings = await window.advanceTerminal.saveSettings(state.settings);
+      const persisted = await window.advanceTerminal.saveSettings(state.settings);
+      if (state.usageRevision === submittedRevision && !state.settingsSaveBatch) {
+        state.settings = persisted;
+      } else {
+        state.usagePersistAgain = true;
+      }
     }
+    state.usageLastSavedAt = Date.now();
   } finally {
     state.usagePersistInFlight = false;
-
     if (state.usagePersistAgain) {
       state.usagePersistAgain = false;
-      markUsageDirty(true);
+      scheduleUsagePersist();
     }
   }
 }
@@ -2531,55 +2612,45 @@ async function withBusyAction(action, label, task) {
   }
 }
 
-async function saveSettingsNow({ toastMessage = '', refresh = true } = {}) {
-  if (!state.settings || !window.advanceTerminal?.saveSettings) {
-    return state.settings;
-  }
-
-  if (state.settingsSaveTimer) {
-    clearTimeout(state.settingsSaveTimer);
-    state.settingsSaveTimer = null;
-  }
-
-  if (state.settingsSaveInFlight) {
-    state.settingsSaveAgain = true;
-    return state.settings;
-  }
-
+function runSettingsSaveQueue() {
+  if (state.settingsSaveInFlight || state.settingsSaveTimer || !state.settingsSaveBatch) return;
   state.settingsSaveInFlight = true;
 
-  try {
-    state.settings.selectedServerId = state.selectedServerId;
-    state.settings.reportOptions = normalizeReportOptionsClient(state.settings.reportOptions);
-    state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  (async () => {
+    try {
+      while (state.settingsSaveBatch && !state.settingsSaveTimer) {
+        const batch = state.settingsSaveBatch;
+        state.settingsSaveBatch = null;
+        try {
+          state.settings.selectedServerId = state.selectedServerId;
+          state.settings.reportOptions = normalizeReportOptionsClient(state.settings.reportOptions);
+          const saved = await window.advanceTerminal.saveSettings(state.settings);
+          // Don't clobber edits queued while the previous IPC save was running.
+          if (!state.settingsSaveBatch) state.settings = saved;
 
-    if (refresh) {
-      updateConnectionGroupDatalist();
-      renderServerList();
-      renderCommandList();
-      renderTerminalToolbarActions();
-      renderAuditLog();
-
-      if (state.activeSettingsTab === 'terminal-actions') {
-        renderTerminalActionList();
+          if (batch.refresh) {
+            updateConnectionGroupDatalist();
+            renderServerList();
+            renderCommandList();
+            renderTerminalToolbarActions();
+            renderAuditLog();
+            if (state.activeSettingsTab === 'terminal-actions') renderTerminalActionList();
+          }
+          if (batch.toastMessage) showToast(batch.toastMessage);
+          appendActivityFeedEvent('Settings saved.', 'system', { dedupeMs: 3500 });
+          batch.waiters.forEach(({ resolve }) => resolve(state.settings));
+        } catch (error) {
+          showToast(`Settings save failed: ${error.message}`, 7000, 'error');
+          batch.waiters.forEach(({ reject }) => reject(error));
+        }
       }
+    } finally {
+      state.settingsSaveInFlight = false;
+      if (state.settingsSaveBatch && !state.settingsSaveTimer) runSettingsSaveQueue();
     }
-
-    if (toastMessage) {
-      showToast(toastMessage);
-    }
-
-    appendActivityFeedEvent('Settings saved.', 'system', { dedupeMs: 3500 });
-
-    return state.settings;
-  } finally {
-    state.settingsSaveInFlight = false;
-
-    if (state.settingsSaveAgain) {
-      state.settingsSaveAgain = false;
-      scheduleSettingsSave({ refresh: false });
-    }
-  }
+  })().catch((error) => {
+    showToast(`Settings save queue error: ${error.message}`, 7000, 'error');
+  });
 }
 
 function scheduleSettingsSave({ toastMessage = '', refresh = false, delay = SETTINGS_SAVE_DEBOUNCE_MS } = {}) {
@@ -2587,21 +2658,29 @@ function scheduleSettingsSave({ toastMessage = '', refresh = false, delay = SETT
     return Promise.resolve(state.settings);
   }
 
-  if (state.settingsSaveTimer) {
-    clearTimeout(state.settingsSaveTimer);
+  if (!state.settingsSaveBatch) {
+    state.settingsSaveBatch = { toastMessage: '', refresh: false, waiters: [] };
   }
+  const batch = state.settingsSaveBatch;
+  batch.refresh = batch.refresh || refresh;
+  if (toastMessage) batch.toastMessage = toastMessage;
+  const result = new Promise((resolve, reject) => batch.waiters.push({ resolve, reject }));
 
-  return new Promise((resolve) => {
+  if (state.settingsSaveTimer) clearTimeout(state.settingsSaveTimer);
+  state.settingsSaveTimer = null;
+  if (delay > 0) {
     state.settingsSaveTimer = setTimeout(() => {
       state.settingsSaveTimer = null;
-      saveSettingsNow({ toastMessage, refresh })
-        .then(resolve)
-        .catch((error) => {
-          showToast(`Settings save failed: ${error.message}`, 7000, 'error');
-          resolve(state.settings);
-        });
+      runSettingsSaveQueue();
     }, delay);
-  });
+  } else {
+    runSettingsSaveQueue();
+  }
+  return result;
+}
+
+function saveSettingsNow({ toastMessage = '', refresh = true } = {}) {
+  return scheduleSettingsSave({ toastMessage, refresh, delay: 0 });
 }
 
 
@@ -4422,7 +4501,6 @@ function syncWorkspaceForView(view) {
 function populateUnifiedSettingsFlyout() {
   if (window.v7PushFlyout?.active !== 'settings') return;
   updatePasteProtectionControls();
-  void renderSettingsRestorePoints();
   renderTerminalActionsSettings();
   void refreshAiStatus({ silent: true });
   void refreshSshKeys({ silent: true });
@@ -4432,6 +4510,12 @@ function populateUnifiedSettingsFlyout() {
 }
 
 function setActiveView(view, toolbarPanel = null) {
+  // Legacy View commands now open the same Appearance category inside Settings.
+  if (view === 'view') {
+    setActiveView('settings', 'settings');
+    setSettingsTab('appearance');
+    return;
+  }
   // The optional V7 push panel keeps the live terminal mounted while displaying
   // the existing Settings, Report, Help, and Appearance views beside it.
   if (window.v7PushFlyout && window.v7PushFlyout.openPage(view)) {
@@ -4502,7 +4586,7 @@ function setHelpTab(tab) {
     'commands',
     'ssh-keys',
     'safety',
-    'restore',
+    'recovery',
     'ai',
     'reports',
     'view',
@@ -4533,11 +4617,6 @@ function setHelpTab(tab) {
 function setSettingsTab(tab) {
   const previousTab = state.activeSettingsTab;
 
-  if (tab === 'appearance') {
-    setActiveView('view', 'view');
-    return;
-  }
-
   if (tab === 'reports' || tab === 'audit') {
     setActiveView('report', 'report');
     setReportTab(tab === 'audit' ? 'audit' : 'options');
@@ -4550,7 +4629,7 @@ function setSettingsTab(tab) {
     return;
   }
 
-  const allowedTabs = new Set(['safety', 'restore', 'terminal-actions', 'ai', 'keys', 'updates']);
+  const allowedTabs = new Set(['appearance', 'safety', 'terminal-actions', 'ai', 'keys', 'recovery', 'updates']);
   const normalizedTab = allowedTabs.has(tab) ? tab : 'safety';
 
   state.activeSettingsTab = normalizedTab;
@@ -4561,12 +4640,14 @@ function setSettingsTab(tab) {
   $$('.settings-section').forEach((item) => item.classList.remove('active'));
   $(`#settings-tab-${normalizedTab}`)?.classList.add('active');
 
-  if (normalizedTab === 'safety') {
-    updatePasteProtectionControls();
+  if (normalizedTab === 'appearance') {
+    updateThemeControls(getUiTheme());
+    updateNotificationPositionControls(getNotificationPosition());
+    updateInAppToastModeControl();
   }
 
-  if (normalizedTab === 'restore') {
-    renderSettingsRestorePoints();
+  if (normalizedTab === 'safety') {
+    updatePasteProtectionControls();
   }
 
   if (normalizedTab === 'terminal-actions') {
@@ -4645,7 +4726,7 @@ function navigateFromHelpLink(button) {
 
   if (action === 'repair-settings') {
     setActiveView('settings', 'settings');
-    setSettingsTab('restore');
+    setSettingsTab('safety');
     repairSettingsFromLocalBackup();
     return;
   }
@@ -6107,7 +6188,7 @@ async function duplicateConnectionById(serverId) {
   state.settings.servers.splice(sourceIndex + 1, 0, copy);
   state.selectedServerId = copy.id;
   state.settings.selectedServerId = copy.id;
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   state.selectedServerId = copy.id;
   state.editingServerId = copy.id;
 
@@ -6144,7 +6225,7 @@ async function deleteConnectionById(serverId) {
     state.settings.selectedServerId = state.selectedServerId;
   }
 
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   state.selectedServerId = state.settings.selectedServerId || state.selectedServerId;
   state.editingServerId = state.selectedServerId;
 
@@ -6182,7 +6263,7 @@ async function duplicateCommandById(commandId) {
   commands.splice(sourceIndex + 1, 0, duplicate);
   state.settings.commands = commands;
   state.editingCommandId = duplicate.id;
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   renderCommandList();
   renderManageCommandList();
   showToast('Command shortcut duplicated.');
@@ -6208,7 +6289,7 @@ async function deleteCommandById(commandId) {
     state.editingCommandId = state.settings.commands[0]?.id || null;
   }
 
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   renderCommandList();
   renderManageCommandList();
   showToast('Command shortcut deleted.');
@@ -6302,7 +6383,7 @@ function updateConnectionHealthFromSession(server, status, summary) {
   }
 
   renderServerList();
-  scheduleSettingsSave({ refresh: false, delay: 1500 });
+  scheduleSettingsSave({ refresh: false, delay: 1500 }).catch(() => {});
 }
 
 
@@ -6523,7 +6604,7 @@ async function testConnectionHealthById(serverId) {
 
     showConnectionHealthModal(freshServer || server, result);
     appendLiveConsole(`Health check finished for ${server.name}: ${result.summary}`, result.status === 'ready' ? 'success' : (result.status === 'warning' ? 'warning' : 'error'));
-    scheduleSettingsSave({ refresh: false });
+    scheduleSettingsSave({ refresh: false }).catch(() => {});
 
     if (result.status === 'ready') {
       showToast(`${server.name} is ready.`, 4000, 'success');
@@ -6555,7 +6636,7 @@ async function testConnectionHealthById(serverId) {
 
     showConnectionHealthModal(freshServer || server, result);
     appendLiveConsole(`Health check failed for ${server.name}: ${result.summary}`, 'error');
-    scheduleSettingsSave({ refresh: false });
+    scheduleSettingsSave({ refresh: false }).catch(() => {});
     showToast(`Health check failed: ${result.summary}`, 7000, 'error');
   } finally {
     if (state.connectionHealthCheckInFlight?.serverId === server.id) {
@@ -7862,7 +7943,7 @@ function restoreSavedTerminalSessions() {
     cleanupTerminalSessionResources(session);
     session.term.writeln(server.missingSavedConnection
       ? '\r\n[Saved connection is unavailable. Re-create the connection or remove this entry.]\r\n'
-      : '\r\n[Saved session restored. Right-click the sidebar entry to reconnect.]\r\n');
+      : '\r\n[Saved session restored. Click its sidebar entry to reconnect.]\r\n');
     restored.push(session);
     firstId = firstId || terminalId;
   }
@@ -8021,6 +8102,9 @@ async function openFreshTerminalTab(source, { replaceSession = null } = {}) {
     fresh.v7SidebarOrder = replacing.v7SidebarOrder;
     const reparentChildren = getV7SessionChildren(replacing.terminalId).map((child) => child.terminalId);
     // Unsent text in the command composer belongs to the tab, not the PTY.
+    if (v7ComposerMultilineModes.delete(replacing.terminalId)) {
+      v7ComposerMultilineModes.add(fresh.terminalId);
+    }
     if (v7ComposerDrafts.has(replacing.terminalId)) {
       v7ComposerDrafts.set(fresh.terminalId, v7ComposerDrafts.get(replacing.terminalId));
     }
@@ -8287,6 +8371,43 @@ function renderTerminalTabs() {
 }
 
 
+// Selecting a tab does not change its structure. Reuse the existing nodes and
+// their pointer, keyboard and context-menu handlers instead of rebuilding the
+// entire strip. Full rendering remains the fallback for missing/reordered tabs.
+function updateTerminalTabActivation() {
+  closeTerminalTabPicker();
+  const tabs = $('#terminal-tabs');
+  if (!tabs) return;
+
+  const visibleIds = Array.from(state.terminals.values())
+    .filter((session) => session.pendingReconnectReplacement !== true)
+    .map((session) => session.terminalId);
+  const tabNodes = Array.from(tabs.children)
+    .filter((node) => node.classList?.contains('terminal-tab'));
+  if (tabNodes.length !== visibleIds.length || tabNodes.some((node, index) => node.dataset.terminalId !== visibleIds[index])) {
+    renderTerminalTabs();
+    return;
+  }
+
+  tabNodes.forEach((tab) => {
+    const active = tab.dataset.terminalId === state.activeTerminalId;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
+
+  const sidebar = $('#v7-session-list');
+  if (sidebar) {
+    Array.from(sidebar.children)
+      .filter((node) => node.classList?.contains('v7-session-row'))
+      .forEach((row) => {
+        const active = row.dataset.terminalId === state.activeTerminalId;
+        row.classList.toggle('active', active);
+        row.querySelector('.v7-session-item')?.setAttribute('aria-current', String(active));
+      });
+  }
+}
+
+
 // Lightweight browser-like tab history. This never sends shell commands or stores
 // server addresses/credentials. Closing a tab invalidates its history entries.
 const terminalTabNavigation = { back: [], forward: [], traversing: false };
@@ -8391,7 +8512,7 @@ function activateTerminal(terminalId) {
     updateTerminalLocationHeader(null);
   }
 
-  renderTerminalTabs();
+  updateTerminalTabActivation();
   updateCurrentTabFooter();
   syncV7CommandComposer();
   fitActiveTerminal();
@@ -8485,6 +8606,23 @@ function createTerminalPane(terminalId, server, { restoredPinned = false, activa
 
   session.disposables = [inputDisposable];
 
+  const terminalPasteHandler = (event) => {
+    if (session.closed || !event.clipboardData) return;
+    const text = event.clipboardData.getData('text/plain');
+    if (!isMultilinePasteText(text)) return;
+    // Intercept only actual multi-line clipboard pastes. Single-line keyboard
+    // input retains xterm's normal key handling, shortcuts and shell features.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void writeClipboardTextToTerminal(session, text, 'Keyboard clipboard', {
+      requireMultilineConfirm: true,
+      requireActiveSession: true,
+      normalizeLineEndings: true
+    }).catch((error) => showToast(`Paste failed: ${error.message}`, 5000, 'error'));
+  };
+  session.terminalPasteHandler = terminalPasteHandler;
+  pane.addEventListener('paste', terminalPasteHandler, true);
+
   const contextMenuHandler = async (event) => {
     event.preventDefault();
 
@@ -8537,17 +8675,93 @@ function getTerminalSize(session) {
   };
 }
 
+// A native window drag can generate dozens of resize events per second.
+// Fit xterm promptly, but resize the PTY/SSH backend only after dimensions
+// settle. This avoids repeatedly asking PowerShell/ConPTY to redraw its prompt.
+const V7_TERMINAL_BACKEND_RESIZE_SETTLE_MS = 280;
+const v7TerminalBackendResizeRequests = new Map();
+
+function sameTerminalSize(left, right) {
+  return Boolean(left && right && left.cols === right.cols && left.rows === right.rows);
+}
+
+function cancelTerminalBackendResize(session) {
+  const request = v7TerminalBackendResizeRequests.get(session?.terminalId);
+  if (!request || request.session !== session) return;
+  if (request.timer !== null) clearTimeout(request.timer);
+  request.timer = null;
+  request.disposed = true;
+  v7TerminalBackendResizeRequests.delete(session.terminalId);
+}
+
+function isCurrentTerminalResizeRequest(request) {
+  const session = request.session;
+  return !request.disposed
+    && v7TerminalBackendResizeRequests.get(session.terminalId) === request
+    && state.terminals.get(session.terminalId) === session
+    && state.activeTerminalId === session.terminalId
+    && session.pane?.classList.contains('active')
+    && !session.closed;
+}
+
+function scheduleTerminalBackendResizeFlush(request, delay = V7_TERMINAL_BACKEND_RESIZE_SETTLE_MS) {
+  if (request.timer !== null) clearTimeout(request.timer);
+  request.timer = setTimeout(() => {
+    request.timer = null;
+    void flushTerminalBackendResize(request);
+  }, delay);
+}
+
+async function flushTerminalBackendResize(request) {
+  if (!isCurrentTerminalResizeRequest(request) || request.inFlight) return;
+  const size = request.desired;
+  if (!size || sameTerminalSize(size, request.lastApplied)) return;
+  request.inFlight = true;
+  request.lastAttempted = size;
+  try {
+    const response = await window.advanceTerminal.resizeTerminal({
+      terminalId: request.session.terminalId,
+      cols: size.cols,
+      rows: size.rows
+    });
+    if (response?.ok !== false) request.lastApplied = size;
+  } catch (error) {
+    // A terminal can close while an IPC resize is in flight. Do not retry
+    // indefinitely or send shell input as a workaround.
+    console.warn('Terminal backend resize was not applied:', error?.message || error);
+  } finally {
+    request.inFlight = false;
+    // A newer size may arrive while the previous IPC request is pending.
+    // Serialize resizes so an older acknowledgement cannot win the race.
+    if (isCurrentTerminalResizeRequest(request)
+        && !sameTerminalSize(request.desired, request.lastAttempted)
+        && request.timer === null) {
+      scheduleTerminalBackendResizeFlush(request);
+    }
+  }
+}
+
 function syncTerminalBackendSize(session) {
-  if (!session || session.closed) {
+  if (!session || session.closed || state.terminals.get(session.terminalId) !== session) return;
+  const size = getTerminalSize(session);
+  let request = v7TerminalBackendResizeRequests.get(session.terminalId);
+  if (!request || request.session !== session) {
+    if (request) cancelTerminalBackendResize(request.session);
+    request = {
+      session, desired: null, lastApplied: null, lastAttempted: null,
+      timer: null, inFlight: false, disposed: false
+    };
+    v7TerminalBackendResizeRequests.set(session.terminalId, request);
+  }
+  request.desired = size;
+  // Even an unchanged size can still have a timer from a previous drag. Only
+  // skip once the latest PTY dimensions are known to match the visual grid.
+  if (!request.inFlight && sameTerminalSize(size, request.lastApplied)) {
+    if (request.timer !== null) clearTimeout(request.timer);
+    request.timer = null;
     return;
   }
-
-  const size = getTerminalSize(session);
-  window.advanceTerminal.resizeTerminal({
-    terminalId: session.terminalId,
-    cols: size.cols,
-    rows: size.rows
-  });
+  scheduleTerminalBackendResizeFlush(request);
 }
 
 function fitTerminalSessionNow(session, options = {}) {
@@ -8728,7 +8942,7 @@ async function saveRememberedPassword(serverId, password) {
   server.password = password;
   server.savePassword = true;
 
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   renderServerList();
   renderConnectionManageList();
   showToast('SSH password remembered locally.');
@@ -9119,6 +9333,7 @@ function cleanupTerminalSessionResources(session) {
   flushLiveConsoleTerminalOutput(session.terminalId);
   clearTerminalOutputBuffers(session.terminalId);
   clearReconnectTimer(session.terminalId);
+  cancelTerminalBackendResize(session);
   clearTimeout(session.processBusyTimer);
   session.processBusyTimer = null;
   session.processBusy = false;
@@ -9135,6 +9350,14 @@ function cleanupTerminalSessionResources(session) {
   });
 
   session.disposables = [];
+
+  if (session.terminalPasteHandler && session.pane) {
+    try {
+      session.pane.removeEventListener('paste', session.terminalPasteHandler, true);
+    } catch (_) {
+      // Ignore DOM listener cleanup failure.
+    }
+  }
 
   if (session.contextMenuHandler && session.pane) {
     try {
@@ -9154,6 +9377,7 @@ function cleanupTerminalSessionResources(session) {
   }
 
   session.contextMenuHandler = null;
+  session.terminalPasteHandler = null;
   session.terminalFocusHandler = null;
 }
 
@@ -9200,6 +9424,7 @@ function closeTerminalSession(terminalId, { force = false, remember = true } = {
     if (child.v7ParentId === id) child.v7ParentId = null;
   }
   v7ComposerDrafts.delete(id);
+  v7ComposerMultilineModes.delete(id);
   updateTerminalTabNavigationButtons();
   persistSavedTerminalSessions();
 
@@ -9569,8 +9794,8 @@ async function writeClipboardTextToTerminal(session, text, sourceLabel, options 
     return false;
   }
   const autoEnter = options?.autoEnter === true;
-  const normalizedData = options?.normalizeLineEndings === true
-    ? data.replace(/\r\n|\n|\r/g, '\r') : data;
+  const normalizedData = options?.normalizeLineEndings === false
+    ? data : data.replace(/\r\n|\n|\r/g, '\r');
   const terminalData = autoEnter ? appendTerminalEnterIfMissing(normalizedData) : normalizedData;
   const sshLockResult = inspectSshLockedTerminalData(session, terminalData);
 
@@ -9781,10 +10006,6 @@ function refreshAppAfterSettingsImport() {
     selectServer(state.selectedServerId);
   }
 
-  if (state.activeSettingsTab === 'restore') {
-    renderSettingsRestorePoints();
-  }
-
   if (state.activeSettingsTab === 'terminal-actions') {
     renderTerminalActionsSettings();
   }
@@ -9856,233 +10077,6 @@ function buildSettingsRepairPreviewMessage(preview) {
     'Only valid readable JSON backups are considered; corrupt .broken files are ignored.',
     'Inline passwords/passphrases will not be copied; existing secure saved secrets are reused when server IDs match.'
   ].join('\n');
-}
-
-
-function formatRestorePointDate(value) {
-  if (!value) {
-    return 'Unknown time';
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Unknown time';
-  }
-
-  return date.toLocaleString();
-}
-
-function formatRestorePointSize(bytes) {
-  const value = Number(bytes || 0);
-
-  if (!Number.isFinite(value) || value <= 0) {
-    return '0 B';
-  }
-
-  if (value < 1024) {
-    return `${Math.round(value)} B`;
-  }
-
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(value / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function summarizeRestorePointNames(point) {
-  const names = Array.isArray(point?.serverNames)
-    ? point.serverNames.filter(Boolean)
-    : [];
-
-  if (!names.length) {
-    return 'No connection names found';
-  }
-
-  return `${names.join(', ')}${point.serverCount > names.length ? ', ...' : ''}`;
-}
-
-function renderRestorePointEmpty(message) {
-  const list = $('#restore-points-list');
-
-  if (!list) {
-    return;
-  }
-
-  list.innerHTML = '';
-
-  const item = document.createElement('div');
-  item.className = 'restore-empty';
-  item.textContent = message;
-  list.appendChild(item);
-}
-
-function renderSettingsRestorePointList(points) {
-  const list = $('#restore-points-list');
-
-  if (!list) {
-    return;
-  }
-
-  list.innerHTML = '';
-
-  if (!points.length) {
-    renderRestorePointEmpty('No valid restore points found yet.');
-    return;
-  }
-
-  points.forEach((point) => {
-    const item = document.createElement('div');
-    item.className = 'restore-point-card';
-
-    const details = document.createElement('div');
-    details.className = 'restore-point-details';
-
-    const title = document.createElement('div');
-    title.className = 'restore-point-title';
-    title.textContent = `${point.sourceLabel || 'Restore point'} · ${formatRestorePointDate(point.modifiedAt)}`;
-
-    const meta = document.createElement('div');
-    meta.className = 'restore-point-meta';
-    meta.textContent = [
-      `${point.serverCount || 0} connection(s)`,
-      `${point.remoteConnections || 0} SSH`,
-      `${point.localConnections || 0} local`,
-      `${point.commandCount || 0} command(s)`,
-      formatRestorePointSize(point.size)
-    ].join(' · ');
-
-    const names = document.createElement('div');
-    names.className = 'restore-point-names';
-    names.textContent = summarizeRestorePointNames(point);
-
-    const fileName = document.createElement('div');
-    fileName.className = 'restore-point-file';
-    fileName.textContent = point.fileName || 'Unknown backup file';
-
-    details.appendChild(title);
-    details.appendChild(meta);
-    details.appendChild(names);
-    details.appendChild(fileName);
-
-    const actions = document.createElement('div');
-    actions.className = 'restore-point-actions';
-
-    const restoreButton = document.createElement('button');
-    restoreButton.className = 'primary-button';
-    restoreButton.type = 'button';
-    restoreButton.textContent = 'Restore';
-    restoreButton.addEventListener('click', () => restoreSettingsPoint(point));
-
-    actions.appendChild(restoreButton);
-
-    item.appendChild(details);
-    item.appendChild(actions);
-    list.appendChild(item);
-  });
-}
-
-function renderRestoreCurrentSummary(summary, invalidCount = 0) {
-  const target = $('#restore-current-summary');
-
-  if (!target) {
-    return;
-  }
-
-  const names = Array.isArray(summary?.serverNames) && summary.serverNames.length
-    ? summary.serverNames.join(', ')
-    : 'No names found';
-
-  target.textContent = [
-    `Current settings: ${summary?.serverCount || 0} connection(s).`,
-    `First connections: ${names}${summary?.serverCount > summary?.serverNames?.length ? ', ...' : ''}`,
-    invalidCount ? `${invalidCount} invalid/corrupt backup file(s) skipped.` : 'Only valid restore points are shown.'
-  ].join(' ');
-}
-
-async function renderSettingsRestorePoints() {
-  const list = $('#restore-points-list');
-
-  if (!window.advanceTerminal.listSettingsRestorePoints) {
-    renderRestorePointEmpty('Restore Points is not available in this build.');
-    return;
-  }
-
-  if (list) {
-    list.innerHTML = '<div class="restore-empty">Loading restore points...</div>';
-  }
-
-  try {
-    const result = await window.advanceTerminal.listSettingsRestorePoints();
-
-    if (!result?.ok) {
-      renderRestorePointEmpty(result?.error || 'Could not load restore points.');
-      return;
-    }
-
-    state.settingsRestoreSummary = result.current || null;
-    state.settingsRestorePoints = Array.isArray(result.restorePoints) ? result.restorePoints : [];
-
-    renderRestoreCurrentSummary(state.settingsRestoreSummary, result.invalidCount || 0);
-    renderSettingsRestorePointList(state.settingsRestorePoints);
-  } catch (error) {
-    appendLiveConsole(`Restore point list failed: ${error.message}`, 'error');
-    renderRestorePointEmpty(`Could not load restore points: ${error.message}`);
-  }
-}
-
-function buildSettingsRestoreMessage(point) {
-  return [
-    `Restore point: ${point.sourceLabel || 'Backup'} from ${formatRestorePointDate(point.modifiedAt)}.`,
-    `File: ${point.fileName || 'Unknown backup file'}.`,
-    `Connections: ${point.serverCount || 0} total, ${point.remoteConnections || 0} SSH, ${point.localConnections || 0} local.`,
-    `Servers found: ${summarizeRestorePointNames(point)}`,
-    '',
-    'Before restoring, the app will create a backup of your current settings.json.',
-    'Only valid readable JSON restore points can be restored.',
-    'Inline passwords/passphrases will not be copied; existing secure saved secrets are reused when server IDs match.'
-  ].join('\n');
-}
-
-async function restoreSettingsPoint(point) {
-  if (!point || !point.fileName) {
-    showToast('Restore point is missing.', 5000, 'warning');
-    return;
-  }
-
-  const confirmed = await showConfirmDialog({
-    title: 'Restore This Settings Backup?',
-    message: buildSettingsRestoreMessage(point),
-    confirmLabel: 'Restore',
-    cancelLabel: 'Cancel'
-  });
-
-  if (!confirmed) {
-    showToast('Settings restore cancelled.', 3500, 'warning');
-    return;
-  }
-
-  return withBusyAction('restoreSettings', 'Restoring...', async () => {
-    try {
-      const result = await window.advanceTerminal.restoreSettingsPoint({
-        fileName: point.fileName
-      });
-
-      if (!result?.ok) {
-        showToast(result?.error || 'Settings restore failed.', 7000, 'error');
-        return;
-      }
-
-      state.settings = result.settings || await window.advanceTerminal.getSettings();
-      refreshAppAfterSettingsImport();
-      await renderSettingsRestorePoints();
-      showToast(`Settings restored from ${result.sourceFileName || 'restore point'}.`, 7000, 'success');
-    } catch (error) {
-      appendLiveConsole(`Settings restore failed: ${error.message}`, 'error');
-      showToast(`Settings restore failed: ${error.message}`, 7000, 'error');
-    }
-  });
 }
 
 
@@ -10852,7 +10846,7 @@ async function saveConnectionFromModal() {
 
   state.selectedServerId = server.id;
   state.settings.selectedServerId = server.id;
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   state.selectedServerId = server.id;
   state.editingServerId = server.id;
 
@@ -10880,7 +10874,7 @@ async function duplicateConnectionFromModal() {
   state.settings.servers.push(copy);
   state.selectedServerId = copy.id;
   state.settings.selectedServerId = copy.id;
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   state.selectedServerId = copy.id;
   state.editingServerId = copy.id;
 
@@ -10915,7 +10909,7 @@ async function deleteConnectionFromModal() {
   state.settings.servers = state.settings.servers.filter((item) => item.id !== server.id);
   state.selectedServerId = state.settings.servers[0]?.id || null;
   state.settings.selectedServerId = state.selectedServerId;
-  state.settings = await window.advanceTerminal.saveSettings(state.settings);
+  state.settings = await saveSettingsNow({ toastMessage: '', refresh: false });
   state.editingServerId = state.selectedServerId;
 
   const next = state.settings.servers.find((item) => item.id === state.selectedServerId);
@@ -10969,7 +10963,7 @@ function renderSettings() {
     state.selectedServerId = state.settings.servers[0].id;
   }
 
-  if (state.activeSettingsTab === 'servers' || state.activeSettingsTab === 'appearance' || state.activeSettingsTab === 'reports' || state.activeSettingsTab === 'audit' || state.activeSettingsTab === 'about') {
+  if (state.activeSettingsTab === 'servers' || state.activeSettingsTab === 'reports' || state.activeSettingsTab === 'audit' || state.activeSettingsTab === 'about') {
     state.activeSettingsTab = 'safety';
   }
 
@@ -11378,13 +11372,22 @@ function moveV7SessionRelative(sourceId, targetId, placement) {
 function getV7SessionDropPlacement(event, row) {
   const rect = row.getBoundingClientRect();
   const position = (event.clientY - rect.top) / Math.max(1, rect.height);
-  return position < 0.3 ? 'before' : position > 0.7 ? 'after' : 'inside';
+  if (position < 0.3) return 'before';
+  if (position <= 0.7) return 'inside';
+  const target = state.terminals.get(row.dataset.terminalId);
+  const parent = getV7SessionParent(target);
+  if (parent) {
+    const children = getV7SessionChildren(parent.terminalId);
+    if (children[children.length - 1]?.terminalId === target.terminalId) return 'after-tree';
+  }
+  return 'after';
 }
 
 function showV7SessionDropPreview(row, placement) {
   row.classList.toggle('is-drop-before', placement === 'before');
   row.classList.toggle('is-drop-target', placement === 'inside');
   row.classList.toggle('is-drop-after', placement === 'after');
+  row.classList.toggle('is-drop-after-tree', placement === 'after-tree');
 }
 
 function detachV7Session(terminalId, { refresh = true } = {}) {
@@ -11520,10 +11523,35 @@ function createV7SessionSectionHeader(sectionId, sectionName) {
   return header;
 }
 
+// A sidebar click is an explicit user action: disconnected placeholders can
+// reconnect on selection, but never during startup, dragging or tab redraws.
+// Keep a pending guard for password/passphrase dialogs and double clicks.
+const v7SessionClickReconnectPending = new Set();
+
+async function reconnectV7SessionOnClick(terminalId) {
+  const session = state.terminals.get(terminalId);
+  if (!session || !session.closed || v7SessionClickReconnectPending.has(terminalId)) return false;
+  v7SessionClickReconnectPending.add(terminalId);
+  renderV7MinimalSessionList();
+  try {
+    // Reuse the normal reconnect path: SSH authentication, host verification,
+    // and restoring the old tab position, parent, pin, color and unsent draft.
+    return await reconnectTerminalTab(terminalId);
+  } catch (error) {
+    showToast(`Unable to reconnect ${getTerminalTabTitle(session)}: ${error?.message || 'Unknown error'}`, 5000, 'error');
+    return false;
+  } finally {
+    v7SessionClickReconnectPending.delete(terminalId);
+    renderV7MinimalSessionList();
+  }
+}
+
 // V7 sessions-first navigation. Only the sidebar UI is rebuilt; xterm and SSH
-// sessions are never recreated, and no session data is written to settings.
+// sessions are never recreated on selection, and no session data is written to settings.
 function getV7SessionStatus(session) {
-  if (!session || session.closed) return 'Disconnected';
+  if (!session) return 'Disconnected';
+  if (v7SessionClickReconnectPending.has(session.terminalId)) return 'Connecting';
+  if (session.closed) return 'Disconnected';
   if (['connecting', 'reconnecting'].includes(String(session.status || '').toLowerCase())) return 'Connecting';
   if (session.processBusy === true) return 'Running command';
   return session.server?.type === 'local' ? 'Local terminal' : 'SSH session';
@@ -11587,14 +11615,18 @@ function createV7SessionRow(terminalId) {
   });
 
   switchButton.addEventListener('click', () => {
-    if (!state.terminals.has(terminalId)) return;
-    // When the user selects the current session, simply refocus it; do not
-    // repeat the expensive tab activation, fitting and redraw path.
+    const session = state.terminals.get(terminalId);
+    if (!session || v7DraggedSessionId) return;
+    // Switching to a live session only changes focus; a disconnected saved
+    // entry reconnects once through the same path as the Reconnect menu.
     if (state.activeTerminalId === terminalId && state.activeView === 'terminal') {
-      focusTerminal(state.terminals.get(terminalId));
+      if (!session.closed) focusTerminal(session);
     } else {
       setActiveView('terminal', 'terminal');
       activateTerminalAndFocus(terminalId);
+    }
+    if (session.closed) {
+      void reconnectV7SessionOnClick(terminalId);
     }
   });
   switchButton.addEventListener('keydown', (event) => {
@@ -11621,6 +11653,7 @@ function createV7SessionRow(terminalId) {
       return;
     }
     v7DraggedSessionId = terminalId;
+    $('#v7-session-list')?.classList.add('is-session-dragging');
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', terminalId);
     row.classList.add('is-dragging');
@@ -11643,7 +11676,10 @@ function createV7SessionRow(terminalId) {
     clearV7SessionDrag();
     if (sourceId) {
       if (placement === 'inside') nestV7Session(sourceId, terminalId);
-      else moveV7SessionRelative(sourceId, terminalId, placement);
+      else if (placement === 'after-tree') {
+        const parent = getV7SessionParent(state.terminals.get(terminalId));
+        if (parent) moveV7SessionRelative(sourceId, parent.terminalId, 'after');
+      } else moveV7SessionRelative(sourceId, terminalId, placement);
     }
   });
   row.prepend(expand);
@@ -11654,8 +11690,9 @@ function createV7SessionRow(terminalId) {
 let v7DraggedSessionId = null;
 function clearV7SessionDrag() {
   v7DraggedSessionId = null;
-  $$('.v7-session-row.is-dragging, .v7-session-row.is-drop-target, .v7-session-row.is-drop-before, .v7-session-row.is-drop-after, .v7-session-section-header.is-drop-target')
-    .forEach((item) => item.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
+  $('#v7-session-list')?.classList.remove('is-session-dragging');
+  $$('.v7-session-row.is-dragging, .v7-session-row.is-drop-target, .v7-session-row.is-drop-before, .v7-session-row.is-drop-after, .v7-session-row.is-drop-after-tree, .v7-session-after-root-target.is-drop-target, .v7-session-section-header.is-drop-target')
+    .forEach((item) => item.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after', 'is-drop-after-tree'));
 }
 
 function updateV7SessionRow(row, session) {
@@ -11669,15 +11706,17 @@ function updateV7SessionRow(row, session) {
   expand.setAttribute('aria-label', `${session.v7Collapsed ? 'Expand' : 'Collapse'} ${getTerminalTabTitle(session)} submenu`);
   const title = getTerminalTabTitle(session);
   const active = session.terminalId === state.activeTerminalId;
-  const working = isTerminalTabWorking(session);
+  const working = isTerminalTabWorking(session) || v7SessionClickReconnectPending.has(session.terminalId);
   row.classList.toggle('active', active);
   row.classList.toggle('is-working', working);
   row.classList.toggle('is-pinned', session.tabPinned === true);
   row.setAttribute('aria-busy', working ? 'true' : 'false');
   const switchButton = row.querySelector('.v7-session-item');
   switchButton.setAttribute('aria-current', active ? 'true' : 'false');
-  switchButton.setAttribute('aria-label', `Switch to ${title} — ${getV7SessionStatus(session)}`);
-  switchButton.title = `${title} — ${getV7SessionStatus(session)} · right-click or use More actions`;
+  const status = getV7SessionStatus(session);
+  const action = session.closed ? 'Reconnect to' : 'Switch to';
+  switchButton.setAttribute('aria-label', `${action} ${title} — ${status}`);
+  switchButton.title = `${title} — ${status} · ${session.closed ? 'click to reconnect' : 'click to switch'} · right-click or use More actions`;
   // Render a clear local-terminal or SSH-server icon, only when its type
   // changes. Regular status updates must not rebuild this DOM unnecessarily.
   const sessionIcon = row.querySelector('.v7-session-dot');
@@ -11739,7 +11778,42 @@ function renderV7MinimalSessionList() {
   const pushRow = (session) => {
     const node = existing.get(session.terminalId) || createV7SessionRow(session.terminalId);
     updateV7SessionRow(node, session);
+    node.classList.remove('v7-tree-first', 'v7-tree-last', 'is-drop-after-tree');
+    node.querySelector('.v7-session-after-root-target')?.classList.remove('is-active', 'is-drop-target');
     desired.push(node);
+    return node;
+  };
+  // A drop target extends just past the final child into the empty gutter.
+  // It is absolute-positioned, so it cannot add gaps to the normal sidebar.
+  const attachAfterRootTarget = (row, rootId) => {
+    let zone = row.querySelector('.v7-session-after-root-target');
+    if (!zone) {
+      zone = document.createElement('div');
+      zone.className = 'v7-session-after-root-target';
+      zone.setAttribute('aria-hidden', 'true');
+      zone.addEventListener('dragover', (event) => {
+        if (!v7DraggedSessionId || v7DraggedSessionId === zone.dataset.afterRootId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'move';
+        zone.classList.add('is-drop-target');
+      });
+      zone.addEventListener('dragleave', (event) => {
+        if (!zone.contains(event.relatedTarget)) zone.classList.remove('is-drop-target');
+      });
+      zone.addEventListener('drop', (event) => {
+        const destinationId = zone.dataset.afterRootId;
+        if (!v7DraggedSessionId || v7DraggedSessionId === destinationId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const sourceId = v7DraggedSessionId;
+        clearV7SessionDrag();
+        moveV7SessionRelative(sourceId, destinationId, 'after');
+      });
+      row.appendChild(zone);
+    }
+    zone.dataset.afterRootId = rootId;
+    zone.classList.add('is-active');
   };
   // The parent is the only section owner. Children always follow it as
   // independent, indented full-width tabs, with no duplicate pinned shortcuts.
@@ -11752,9 +11826,16 @@ function renderV7MinimalSessionList() {
     if (!rootMatch && !matchingChildren.length) return;
     pushRow(root);
     seen.add(root.terminalId);
-    if (query || !root.v7Collapsed) {
-      matchingChildren.forEach((child) => { pushRow(child); seen.add(child.terminalId); });
-    }
+    const visibleChildren = query || !root.v7Collapsed ? matchingChildren : [];
+    visibleChildren.forEach((child, index) => {
+      const row = pushRow(child);
+      if (index === 0) row.classList.add('v7-tree-first');
+      if (index === visibleChildren.length - 1) {
+        row.classList.add('v7-tree-last');
+        attachAfterRootTarget(row, root.terminalId);
+      }
+      seen.add(child.terminalId);
+    });
   };
   const pinned = getV7OrderedSessions(roots.filter((root) => root.tabPinned));
   const regular = getV7OrderedSessions(roots.filter((root) => !root.tabPinned));
@@ -12106,6 +12187,7 @@ function bindV7MinimalShell() {
 // V7 command composer: reuse the existing guarded, audited terminal-write route.
 // Drafts live in memory only; no terminal commands or credentials are stored.
 const v7ComposerDrafts = new Map();
+const v7ComposerMultilineModes = new Set();
 let v7ComposerDisplayedTerminalId = null;
 const v7ComposerSending = new Set();
 const V7_COMPOSER_AUTO_SEND_KEY = 'advance-terminal-v7-composer-auto-send';
@@ -12122,10 +12204,29 @@ function syncV7CommandComposer() {
     input.value = id ? (v7ComposerDrafts.get(id) || '') : '';
   }
   const session = id && state.terminals.get(id);
+  const isMultiline = Boolean((id && v7ComposerMultilineModes.has(id)) || /[\r\n]/.test(input.value));
+  const composer = $('#v7-command-composer');
+  const toggle = $('#v7-composer-multiline-toggle');
+  const hint = $('#v7-composer-multiline-hint');
+  composer?.classList.toggle('is-multiline', isMultiline);
+  if (toggle) toggle.setAttribute('aria-pressed', String(isMultiline));
+  if (hint) hint.hidden = !isMultiline;
+  input.rows = isMultiline ? 5 : 1;
+  input.title = isMultiline
+    ? 'Enter adds a line · Ctrl+Enter reviews and sends the complete command'
+    : 'Enter sends · Shift+Enter adds a line · Ctrl+Enter sends';
+  // Expand only the editor; never resize or rebuild the active terminal.
+  if (isMultiline) {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(320, Math.max(112, input.scrollHeight || 112))}px`;
+  } else {
+    input.style.removeProperty('height');
+  }
   const unavailable = !session || session.closed || v7ComposerSending.has(id);
   send.disabled = unavailable || !input.value.trim();
   send.title = !session || session.closed ? 'Connect or reconnect a terminal to send'
-    : v7ComposerSending.has(id) ? 'Sending command...' : 'Send command (Enter)';
+    : v7ComposerSending.has(id) ? 'Sending command...'
+      : isMultiline ? 'Review and send multi-line command (Ctrl+Enter)' : 'Send command (Enter)';
 }
 
 async function sendV7ComposerCommand({ automaticPaste = false } = {}) {
@@ -12147,7 +12248,7 @@ async function sendV7ComposerCommand({ automaticPaste = false } = {}) {
       autoEnter: true,
       preserveFocus: true,
       normalizeLineEndings: true,
-      requireMultilineConfirm: automaticPaste,
+      requireMultilineConfirm: automaticPaste || isMultilinePasteText(value),
       requireActiveSession: true,
       quiet: true
     });
@@ -12175,7 +12276,23 @@ function bindV7CommandComposer() {
   const input = $('#v7-composer-input');
   const auto = $('#v7-composer-auto-send');
   const project = $('#v7-composer-project');
+  const multiline = $('#v7-composer-multiline-toggle');
   if (!input || !auto || !project) return;
+  multiline?.addEventListener('click', () => {
+    const id = state.activeTerminalId;
+    if (!id) return;
+    if (v7ComposerMultilineModes.has(id)) {
+      if (/[\r\n]/.test(input.value)) {
+        showToast('Remove line breaks before returning to single-line mode.', 3500, 'warning');
+        return;
+      }
+      v7ComposerMultilineModes.delete(id);
+    } else {
+      v7ComposerMultilineModes.add(id);
+    }
+    syncV7CommandComposer();
+    input.focus();
+  });
 
   try { auto.checked = localStorage.getItem(V7_COMPOSER_AUTO_SEND_KEY) === 'true'; }
   catch (_) { auto.checked = false; }
@@ -12192,8 +12309,16 @@ function bindV7CommandComposer() {
     syncV7CommandComposer();
   });
   input.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
-    // Enter submits. Shift+Enter and IME composition never submit commands.
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+    // Preserve single-line Enter-to-run. In multi-line mode, Enter edits the
+    // draft; Ctrl+Enter sends it after the multi-line safety review.
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      void sendV7ComposerCommand();
+      return;
+    }
+    if (event.shiftKey || v7ComposerMultilineModes.has(state.activeTerminalId)
+        || /[\r\n]/.test(input.value)) return;
     event.preventDefault();
     void sendV7ComposerCommand();
   });
@@ -12210,6 +12335,12 @@ function bindV7CommandComposer() {
     if (terminalId) v7ComposerDrafts.set(terminalId, input.value);
     input.setSelectionRange(start + pasted.length, start + pasted.length);
     syncV7CommandComposer();
+    // Auto-send is for short one-line commands only. Always keep a multi-line
+    // script visible in the editor until the user explicitly reviews it.
+    if (/[\r\n]/.test(input.value) || v7ComposerMultilineModes.has(terminalId)) {
+      v7ComposerPasteSequence += 1;
+      return;
+    }
 
     // Give the browser a real paint opportunity before sending and clearing
     // the composer. If the user edits, switches tab, or disables auto-send,
@@ -12444,15 +12575,6 @@ function bindEvents() {
   $('#settings-import-main')?.addEventListener('click', importSettingsBackup);
   $('#tool-repair-settings')?.addEventListener('click', repairSettingsFromLocalBackup);
   $('#settings-repair-main')?.addEventListener('click', repairSettingsFromLocalBackup);
-  $('#tool-restore-settings')?.addEventListener('click', () => {
-    setActiveView('settings', 'settings');
-    setSettingsTab('restore');
-  });
-  $('#settings-restore-main')?.addEventListener('click', () => {
-    setActiveView('settings', 'settings');
-    setSettingsTab('restore');
-  });
-
   $('#tool-file-settings')?.addEventListener('click', () => setActiveView('settings', 'settings'));
   $('#tool-file-about')?.addEventListener('click', () => setActiveView('about', 'help'));
 
@@ -12469,10 +12591,9 @@ function bindEvents() {
   $('#tool-view-settings')?.addEventListener('click', () => setActiveView('settings', 'settings'));
 
   $('#tool-settings-appearance')?.addEventListener('click', () => {
-    setActiveView('view', 'view');
+    setActiveView('settings', 'settings');
+    setSettingsTab('appearance');
   });
-
-  $('#restore-refresh-button')?.addEventListener('click', renderSettingsRestorePoints);
 
   $('#tool-settings-terminal-actions')?.addEventListener('click', () => {
     setActiveView('settings', 'settings');
@@ -12720,6 +12841,19 @@ function bindEvents() {
   $('#ai-openai-model')?.addEventListener('change', () => {
     saveAiSettingsFromControls().catch((error) => showToast(`AI settings save failed: ${error.message}`, 7000, 'error'));
   });
+  $('#ai-provider-select')?.addEventListener('change', (event) => {
+    const modelInput = $('#ai-openai-model');
+    if (modelInput) modelInput.value = event.target.value === 'lmstudio' ? 'qwen/qwen3.5-9b' : 'gpt-5.5';
+    saveAiSettingsFromControls().catch((error) => showToast(`AI provider save failed: ${error.message}`, 7000, 'error'));
+  });
+  $('#ai-project-inspect')?.addEventListener('click', () => {
+    inspectActiveProjectWithLocalAi().catch((error) => showToast(error.message, 6000, 'error'));
+  });
+  $('#ai-project-copy')?.addEventListener('click', () => {
+    const result = $('#ai-project-answer')?.value || '';
+    if (!result) return showToast('No AI analysis to copy.', 3000, 'warning');
+    navigator.clipboard.writeText(result).then(() => showToast('AI analysis copied.', 3000, 'success')).catch(() => showToast('Unable to copy AI analysis.', 4000, 'error'));
+  });
 
   $$('[data-report-option]').forEach((input) => {
     input.addEventListener('change', (event) => {
@@ -12898,7 +13032,13 @@ function bindEvents() {
     closeV7NewSessionMenu();
     closeTerminalTabPicker();
     closeTerminalTabContextMenu();
-    fitActiveTerminal();
+    // ResizeObserver already follows #terminal-host geometry; calling
+    // fitActiveTerminal here queued three more fits for every drag event.
+    // Use a single-frame fallback only on older runtimes without an observer.
+    if (!v7TerminalHostResizeObserver) {
+      const session = state.terminals.get(state.activeTerminalId);
+      if (session) requestAnimationFrame(() => fitTerminalSessionNow(session));
+    }
   });
 
   window.advanceTerminal.onTerminalData((payload) => {

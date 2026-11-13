@@ -73,7 +73,7 @@
   padding: 10px 12px;
 }
 /* The flyout heading already says Settings; keep only its existing
-   backup/repair/import/export buttons below instead of a duplicate heading. */
+   repair/import/export buttons below instead of a duplicate heading. */
 .v7-flyout-content #settings-view > .content-header > div:first-child {
   display: none;
 }
@@ -89,6 +89,9 @@
   width: 100%;
   padding: 6px 4px;
   white-space: normal;
+}
+.v7-flyout-content #settings-view > .content-header .header-actions button:last-child {
+  grid-column: 1 / -1;
 }
 .v7-flyout-content #settings-view .settings-nav {
   display: none !important;
@@ -157,7 +160,6 @@
 .v7-flyout-content #settings-view .ssh-key-actions {
   justify-content: flex-start;
 }
-.v7-flyout-content #settings-view .restore-point-card,
 .v7-flyout-content #settings-view .about-help-card,
 .v7-flyout-content #settings-view input,
 .v7-flyout-content #settings-view select,

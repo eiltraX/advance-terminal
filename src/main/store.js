@@ -9,71 +9,9 @@ const {
   pruneSecretsForServerIds
 } = require('./secret-store');
 
-const SETTINGS_AUTO_BACKUP_MAX_FILES = 30;
-const SETTINGS_AUTO_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;
-
-let lastSettingsAutoBackupAt = 0;
-let lastSettingsAutoBackupSignature = '';
-
 function getSettingsFilePath() {
   const userDataPath = app.getPath('userData');
   return path.join(userDataPath, 'settings.json');
-}
-
-function getSettingsDirectoryPath() {
-  return path.dirname(getSettingsFilePath());
-}
-
-function getSettingsBackupTimestamp() {
-  const now = new Date();
-  const pad = (value) => String(value).padStart(2, '0');
-
-  return [
-    now.getFullYear(),
-    pad(now.getMonth() + 1),
-    pad(now.getDate())
-  ].join('') + '-' + [
-    pad(now.getHours()),
-    pad(now.getMinutes()),
-    pad(now.getSeconds())
-  ].join('');
-}
-
-function normalizeBackupReason(reason) {
-  const safeReason = String(reason || 'auto')
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-
-  return safeReason || 'auto';
-}
-
-function getSettingsFileSignature(filePath) {
-  const raw = fs.readFileSync(filePath);
-  return crypto.createHash('sha256').update(raw).digest('hex');
-}
-
-function isValidSettingsBackupPayload(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return false;
-  }
-
-  if (!Array.isArray(payload.servers) || !payload.servers.length) {
-    return false;
-  }
-
-  return payload.servers.some((server) => server && typeof server === 'object');
-}
-
-function readValidSettingsBackupPayload(filePath) {
-  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-
-  if (!isValidSettingsBackupPayload(payload)) {
-    return null;
-  }
-
-  return payload;
 }
 
 function writeSettingsFileAtomic(filePath, settings) {
@@ -107,135 +45,6 @@ function writeSettingsFileAtomic(filePath, settings) {
     throw error;
   }
 }
-
-function listSettingsAutoBackupFiles() {
-  const dirPath = getSettingsDirectoryPath();
-
-  if (!fs.existsSync(dirPath)) {
-    return [];
-  }
-
-  return fs.readdirSync(dirPath)
-    .filter((fileName) => /^settings\.json\.backup-auto-\d{8}-\d{6}(?:-[a-z0-9_-]+)?$/.test(fileName))
-    .map((fileName) => path.join(dirPath, fileName))
-    .filter((filePath) => {
-      try {
-        return fs.statSync(filePath).isFile();
-      } catch (_) {
-        return false;
-      }
-    });
-}
-
-function pruneSettingsAutoBackups(maxFiles = SETTINGS_AUTO_BACKUP_MAX_FILES) {
-  const backups = listSettingsAutoBackupFiles()
-    .map((filePath) => {
-      try {
-        return {
-          filePath,
-          modifiedAt: fs.statSync(filePath).mtimeMs
-        };
-      } catch (_) {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((left, right) => right.modifiedAt - left.modifiedAt);
-
-  backups.slice(maxFiles).forEach((backup) => {
-    try {
-      fs.unlinkSync(backup.filePath);
-    } catch (_) {
-      // Ignore old backup cleanup failure.
-    }
-  });
-}
-
-function hasDuplicateLatestAutoBackup(signature) {
-  const latest = listSettingsAutoBackupFiles()
-    .map((filePath) => {
-      try {
-        return {
-          filePath,
-          modifiedAt: fs.statSync(filePath).mtimeMs
-        };
-      } catch (_) {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((left, right) => right.modifiedAt - left.modifiedAt)[0];
-
-  if (!latest) {
-    return false;
-  }
-
-  try {
-    return getSettingsFileSignature(latest.filePath) === signature;
-  } catch (_) {
-    return false;
-  }
-}
-
-function createSettingsAutoBackup(reason = 'auto', options = {}) {
-  const settingsPath = getSettingsFilePath();
-
-  try {
-    if (!fs.existsSync(settingsPath)) {
-      return {
-        ok: false,
-        skipped: true,
-        reason: 'settings-file-missing'
-      };
-    }
-
-    readValidSettingsBackupPayload(settingsPath);
-
-    const now = Date.now();
-    const signature = getSettingsFileSignature(settingsPath);
-    const force = Boolean(options.force);
-
-    if (!force && signature === lastSettingsAutoBackupSignature && now - lastSettingsAutoBackupAt < SETTINGS_AUTO_BACKUP_MIN_INTERVAL_MS) {
-      return {
-        ok: false,
-        skipped: true,
-        reason: 'recent-duplicate'
-      };
-    }
-
-    if (hasDuplicateLatestAutoBackup(signature)) {
-      lastSettingsAutoBackupAt = now;
-      lastSettingsAutoBackupSignature = signature;
-
-      return {
-        ok: false,
-        skipped: true,
-        reason: 'latest-backup-already-matches'
-      };
-    }
-
-    const backupPath = `${settingsPath}.backup-auto-${getSettingsBackupTimestamp()}-${normalizeBackupReason(reason)}`;
-    fs.copyFileSync(settingsPath, backupPath);
-
-    lastSettingsAutoBackupAt = now;
-    lastSettingsAutoBackupSignature = signature;
-
-    pruneSettingsAutoBackups();
-
-    return {
-      ok: true,
-      backupPath
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      skipped: true,
-      reason: 'invalid-current-settings',
-      error: error.message
-    };
-  }
-}
-
 
 function createDefaultTerminalActions() {
   return [
@@ -371,14 +180,16 @@ function normalizeAiSettings(value = {}) {
     ? value
     : {};
 
-  const model = String(source.model || 'gpt-5.5')
-    .trim()
+  const provider = source.provider === 'openai' ? 'openai' : 'lmstudio';
+  const defaultModel = provider === 'openai' ? 'gpt-5.5' : 'qwen/qwen3.5-9b';
+  const previousModel = String(source.model || '').trim();
+  const model = (previousModel || defaultModel)
     .replace(/\s+/g, '')
-    .slice(0, 80) || 'gpt-5.5';
+    .slice(0, 120) || defaultModel;
 
   return {
     enabled: source.enabled === true,
-    provider: 'openai',
+    provider,
     model,
     includeGitDiff: source.includeGitDiff === true,
     includeRecentCommands: source.includeRecentCommands !== false
@@ -909,8 +720,14 @@ function normalizeCommand(command) {
 function readSettings() {
   ensureSettingsFile();
 
+  let data;
   try {
-    const data = JSON.parse(fs.readFileSync(getSettingsFilePath(), 'utf8'));
+    data = JSON.parse(fs.readFileSync(getSettingsFilePath(), 'utf8'));
+  } catch (error) {
+    throw new Error(`Cannot load settings.json. The existing file has NOT been overwritten. ${error.message}`);
+  }
+
+  {
     const defaults = createDefaultSettings();
 
     const settings = {
@@ -945,23 +762,10 @@ function readSettings() {
     }
 
     return settings;
-  } catch (error) {
-    const backupPath = `${getSettingsFilePath()}.broken-${Date.now()}`;
-    try {
-      fs.copyFileSync(getSettingsFilePath(), backupPath);
-    } catch (_) {
-      // Ignore backup failure and recreate settings.
-    }
-
-    const defaults = createDefaultSettings();
-    writeSettingsFileAtomic(getSettingsFilePath(), defaults);
-    return defaults;
   }
 }
 
-function saveSettings(settings) {
-  createSettingsAutoBackup('before-save');
-
+function saveSettings(settings, { auditEntry = null } = {}) {
   const current = readSettings();
 
   const next = {
@@ -993,9 +797,28 @@ function saveSettings(settings) {
     next.selectedServerId = next.servers[0]?.id || '';
   }
 
+  if (auditEntry) {
+    next.auditLog.push({
+      id: crypto.randomUUID(),
+      action: String(auditEntry.action || 'event'),
+      message: String(auditEntry.message || ''),
+      createdAt: new Date().toISOString()
+    });
+    next.auditLog = next.auditLog.slice(-500);
+  }
+
   writeSettingsFileAtomic(getSettingsFilePath(), next);
-  createSettingsAutoBackup('after-save');
   return next;
+}
+
+// Reports are persisted independently from settings saves; never overwrite
+// connections, SSH configuration, or recent UI changes with a stale renderer snapshot.
+function saveReportUsage(reportUsage) {
+  const current = readSettings();
+  current.reportUsage = normalizeReportUsage(reportUsage && typeof reportUsage === 'object'
+    ? reportUsage : current.reportUsage);
+  writeSettingsFileAtomic(getSettingsFilePath(), current);
+  return current.reportUsage;
 }
 
 function addAuditLog(entry) {
@@ -1017,7 +840,7 @@ function addAuditLog(entry) {
 module.exports = {
   readSettings,
   saveSettings,
+  saveReportUsage,
   addAuditLog,
-  getSettingsFilePath,
-  createSettingsAutoBackup
+  getSettingsFilePath
 };

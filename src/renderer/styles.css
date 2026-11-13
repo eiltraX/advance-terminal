@@ -5964,76 +5964,10 @@ textarea {
 }
 
 
-/* Restore Points */
-.restore-current-summary {
-  border: 1px solid var(--win-border);
-  background: var(--win-panel-soft);
-  border-radius: 4px;
-  padding: 10px 12px;
-  color: var(--win-text);
-  margin-bottom: 12px;
-  line-height: 1.45;
-}
-
-.restore-points-list {
-  display: grid;
-  gap: 10px;
-}
-
-.restore-empty {
-  border: 1px dashed var(--win-border);
-  background: var(--win-panel);
-  color: var(--win-muted);
-  border-radius: 4px;
-  padding: 14px;
-}
-
-.restore-point-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-  border: 1px solid var(--win-border);
-  background: var(--win-panel);
-  border-radius: 4px;
-  padding: 12px;
-}
-
-.restore-point-details {
-  min-width: 0;
-}
-
-.restore-point-title {
-  font-weight: 700;
-  color: var(--win-text);
-  margin-bottom: 5px;
-}
-
-.restore-point-meta,
-.restore-point-names,
-.restore-point-file {
-  color: var(--win-muted);
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.restore-point-file {
-  margin-top: 5px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.restore-point-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
 /* Slim, low-noise scrollbars for side panels and app lists */
 .server-list,
 .command-list,
 .settings-content,
-.restore-points-list,
 .activity-feed-content {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
@@ -6042,7 +5976,6 @@ textarea {
 .server-list::-webkit-scrollbar,
 .command-list::-webkit-scrollbar,
 .settings-content::-webkit-scrollbar,
-.restore-points-list::-webkit-scrollbar,
 .activity-feed-content::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -6051,7 +5984,6 @@ textarea {
 .server-list::-webkit-scrollbar-track,
 .command-list::-webkit-scrollbar-track,
 .settings-content::-webkit-scrollbar-track,
-.restore-points-list::-webkit-scrollbar-track,
 .activity-feed-content::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -6059,7 +5991,6 @@ textarea {
 .server-list::-webkit-scrollbar-thumb,
 .command-list::-webkit-scrollbar-thumb,
 .settings-content::-webkit-scrollbar-thumb,
-.restore-points-list::-webkit-scrollbar-thumb,
 .activity-feed-content::-webkit-scrollbar-thumb {
   min-height: 44px;
   border: 2px solid transparent;
@@ -6071,7 +6002,6 @@ textarea {
 .server-list::-webkit-scrollbar-thumb:hover,
 .command-list::-webkit-scrollbar-thumb:hover,
 .settings-content::-webkit-scrollbar-thumb:hover,
-.restore-points-list::-webkit-scrollbar-thumb:hover,
 .activity-feed-content::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.82);
   background-clip: padding-box;
@@ -6080,7 +6010,6 @@ textarea {
 :root[data-theme="dark"] .server-list,
 :root[data-theme="dark"] .command-list,
 :root[data-theme="dark"] .settings-content,
-:root[data-theme="dark"] .restore-points-list,
 :root[data-theme="dark"] .activity-feed-content {
   scrollbar-color: rgba(160, 160, 160, 0.52) transparent;
 }
@@ -6088,7 +6017,6 @@ textarea {
 :root[data-theme="dark"] .server-list::-webkit-scrollbar-thumb,
 :root[data-theme="dark"] .command-list::-webkit-scrollbar-thumb,
 :root[data-theme="dark"] .settings-content::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .restore-points-list::-webkit-scrollbar-thumb,
 :root[data-theme="dark"] .activity-feed-content::-webkit-scrollbar-thumb {
   background: rgba(160, 160, 160, 0.52);
   background-clip: padding-box;
@@ -6097,7 +6025,6 @@ textarea {
 :root[data-theme="dark"] .server-list::-webkit-scrollbar-thumb:hover,
 :root[data-theme="dark"] .command-list::-webkit-scrollbar-thumb:hover,
 :root[data-theme="dark"] .settings-content::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"] .restore-points-list::-webkit-scrollbar-thumb:hover,
 :root[data-theme="dark"] .activity-feed-content::-webkit-scrollbar-thumb:hover {
   background: rgba(190, 190, 190, 0.78);
   background-clip: padding-box;
@@ -6115,22 +6042,22 @@ textarea {
 }
 
 .ai-key-status {
-  border: 1px solid var(--border);
+  border: 1px solid var(--win-border);
   border-radius: 8px;
   padding: 10px 12px;
-  background: var(--surface-alt);
-  color: var(--muted);
+  background: var(--win-panel-soft);
+  color: var(--win-muted);
   font-size: 12px;
 }
 
 .ai-key-status.ok {
   border-color: rgba(72, 187, 120, 0.45);
-  color: var(--success);
+  color: var(--win-green);
 }
 
 .ai-key-status.warning {
   border-color: rgba(245, 158, 11, 0.45);
-  color: var(--warning);
+  color: #b66a00;
 }
 
 .compact-actions {
@@ -7025,3 +6952,10 @@ textarea {
   :root[data-theme="dark"] .tool-button,
   :root[data-theme="dark"] .menu-item { transition: none; }
 }
+
+/* Local LM Studio project inspector, mounted in existing Settings panel. */
+.ai-project-inspector { display: grid; gap: 10px; border-top: 1px solid var(--win-border); padding-top: 16px; min-width: 0; }
+.ai-project-inspector textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-width: 0; border: 1px solid var(--win-border); background: var(--win-panel-soft); color: var(--win-text); border-radius: 8px; padding: 10px 12px; font: inherit; line-height: 1.45; }
+.ai-project-inspector #ai-project-answer { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
+.ai-project-inspector label { color: var(--win-muted); font-size: 12px; }
+.ai-settings-panel [hidden] { display: none !important; }

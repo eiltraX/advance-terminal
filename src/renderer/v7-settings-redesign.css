@@ -1,0 +1,77 @@
+/* Settings-only navigation redesign. Other flyout pages and terminal UI are unchanged. */
+#settings-view.at-settings-init, #settings-view { --at-setting-accent: #4f96d7; }
+#settings-view .at-settings-header { padding: 16px 20px; }
+#settings-view .at-settings-header h1 { font-size: 19px; line-height: 1.3; margin: 3px 0; }
+#settings-view .at-settings-subtitle { color: var(--win-muted); margin: 4px 0 0; font-size: 12px; }
+#settings-view .at-settings-layout { grid-template-columns: minmax(204px, 226px) minmax(0,1fr); min-width: 0; }
+#settings-view .at-settings-nav { min-width: 0; box-sizing: border-box; padding: 16px 11px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden; }
+#settings-view .at-settings-search-label, #settings-view .at-settings-picker-label { font-weight: 600; font-size: 11px; color: var(--win-muted); }
+#settings-view .at-settings-search-wrap { position: relative; min-width: 0; }
+#settings-view .at-settings-search-wrap svg { position: absolute; top: 50%; left: 10px; width: 15px; height: 15px; transform: translateY(-50%); fill: none; stroke: var(--win-muted); stroke-width: 1.8; stroke-linecap: round; pointer-events: none; }
+#settings-view #at-settings-search { display: block; width: 100%; min-height: 36px; box-sizing: border-box; padding: 7px 10px 7px 32px; border: 1px solid var(--win-border); border-radius: 6px; background: var(--win-panel); color: var(--win-text); font: inherit; font-size: 12px; }
+#settings-view #at-settings-search:focus-visible, #settings-view .at-settings-picker:focus-visible, #settings-view .settings-tab:focus-visible, #settings-view .at-settings-result:focus-visible { outline: 2px solid var(--at-setting-accent); outline-offset: 2px; }
+#settings-view #at-settings-search::placeholder { color: var(--win-muted); opacity: .8; }
+#settings-view .at-settings-picker-label, #settings-view .at-settings-picker { display: none; }
+#settings-view .at-settings-nav-list { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#settings-view .at-settings-nav-heading { margin: 15px 8px 5px; font-size: 10px; font-weight: 700; color: var(--win-muted); letter-spacing: .09em; }
+#settings-view .at-settings-nav-heading:first-child { margin-top: 8px; }
+#settings-view .at-settings-nav-list .settings-tab { box-sizing: border-box; width: 100%; height: auto; min-height: 48px; margin: 0; padding: 8px 11px; border-radius: 7px; cursor: pointer; line-height: 1.35; }
+#settings-view .at-settings-tab-title { display: block; font-size: 12px; font-weight: 600; }
+#settings-view .at-settings-tab-desc { display: block; margin-top: 3px; font-size: 10px; font-weight: 400; color: var(--win-muted); }
+#settings-view .settings-tab.active { border-left: 3px solid var(--at-setting-accent); padding-left: 8px; }
+#settings-view .at-settings-open-elsewhere { font-weight: 400; font-size: 11px; opacity: .7; }
+#settings-view .at-settings-search-results { border-top: 1px solid var(--win-border); padding-top: 8px; max-height: 230px; overflow-y: auto; }
+#settings-view .at-settings-search-results[hidden] { display: none !important; }
+#settings-view .at-settings-result { display: block; width: 100%; border: 0; border-radius: 5px; background: transparent; padding: 9px 8px; color: var(--win-text); text-align: left; font-size: 12px; cursor: pointer; }
+#settings-view .at-settings-result:hover { background: var(--win-blue-light); }
+#settings-view .at-settings-result small { display: block; color: var(--win-muted); font-size: 10px; padding-top: 3px; }
+#settings-view .at-settings-search-empty { padding: 10px 5px; color: var(--win-muted); font-size: 11px; }
+#settings-view.at-settings-is-searching .at-settings-nav-list { display: none; }
+#settings-view > .at-settings-layout > .settings-content { min-width: 0; max-width: none; padding: 20px 22px; }
+#settings-view .settings-content .settings-section { max-width: 950px; }
+#settings-view .settings-section .section-title h2 { font-size: 17px; letter-spacing: -.015em; }
+#settings-view .settings-section .windows-group { margin-top: 10px; border-radius: 8px; }
+#settings-view .at-settings-section-intro { font-size: 12px; line-height: 1.55; color: var(--win-muted); max-width: 660px; margin: 0 0 14px; }
+#settings-view .at-recovery-actions { display: grid; gap: 10px; }
+#settings-view .at-recovery-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; background: var(--win-panel); border: 1px solid var(--win-border); border-radius: 8px; padding: 13px; }
+#settings-view .at-recovery-row h3 { margin: 0 0 5px; font-size: 13px; color: var(--win-text); }
+#settings-view .at-recovery-row p { margin: 0; color: var(--win-muted); font-size: 11px; line-height: 1.5; }
+#settings-view .at-recovery-row button { white-space: nowrap; cursor: pointer; }
+#settings-view .at-settings-safety-note { border-left: 3px solid #d89e43; background: var(--win-panel-soft); padding: 11px; margin-top: 15px; line-height: 1.5; font-size: 11px; color: var(--win-muted); }
+@media (max-width: 980px) {
+  #settings-view .at-settings-layout { grid-template-columns: 190px minmax(0,1fr); }
+  #settings-view .at-settings-nav { border-right: 1px solid var(--win-border); border-bottom: none; flex-direction: column; overflow-x: hidden; }
+  #settings-view .at-settings-nav-list .settings-tab { min-width: 0; }
+}
+@media (max-width: 700px) {
+  #settings-view .at-settings-layout { grid-template-columns: minmax(0,1fr); }
+  #settings-view .at-settings-nav { border-right: 0; border-bottom: 1px solid var(--win-border); }
+  #settings-view .at-settings-nav-list { display: none; }
+  #settings-view .at-settings-picker-label, #settings-view .at-settings-picker { display: block; }
+  #settings-view .at-settings-picker { box-sizing: border-box; width: 100%; padding: 8px; min-height: 36px; border: 1px solid var(--win-border); background: var(--win-panel); color: var(--win-text); border-radius: 6px; }
+  #settings-view .settings-content { padding: 14px; }
+  #settings-view .at-recovery-row { grid-template-columns: minmax(0,1fr); }
+  #settings-view .at-recovery-row button { justify-self: start; }
+}
+/* V7's actual settings surface is a narrow push flyout. Present ONE category,
+   rather than the old vertically stacked page of every setting. */
+.v7-flyout-content #settings-view > .at-settings-header { display: none; }
+.v7-flyout-content #settings-view .at-settings-layout { display: flex !important; flex-direction: column !important; }
+.v7-flyout-content #settings-view .at-settings-nav { display: flex !important; flex-direction: column !important; flex: 0 0 auto; width: 100%; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--v7-border,#33363c); overflow: visible; }
+.v7-flyout-content #settings-view .at-settings-search-label { display: none; }
+.v7-flyout-content #settings-view .at-settings-picker-label { display: block; }
+.v7-flyout-content #settings-view .at-settings-picker { display: block; box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--win-border); border-radius: 6px; background: var(--win-panel); color: var(--win-text); font-size: 12px; }
+.v7-flyout-content #settings-view .at-settings-nav-list { display: none !important; }
+.v7-flyout-content #settings-view .at-settings-search-results { max-height: 150px; }
+.v7-flyout-content #settings-view > .at-settings-layout > .settings-content { display: block; padding: 14px 12px; }
+.v7-flyout-content #settings-view .settings-section,
+.v7-flyout-content #settings-view .settings-section:not(.active) { display: none !important; margin-top: 0 !important; padding-top: 0 !important; border-top: 0 !important; }
+.v7-flyout-content #settings-view .settings-section.active { display: block !important; }
+.v7-flyout-content #settings-view .settings-content .settings-section { max-width: none; }
+.v7-flyout-content #settings-view .settings-content .section-title { margin-bottom: 12px; }
+.v7-flyout-content #settings-view .at-recovery-row { grid-template-columns: minmax(0,1fr); padding: 10px; }
+.v7-flyout-content #settings-view .at-recovery-row button { justify-self: start; }
+.v7-flyout-content #settings-view .at-recovery-actions { gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  #settings-view *, #settings-view *::before, #settings-view *::after { scroll-behavior: auto !important; transition: none !important; }
+}
